@@ -1,9 +1,8 @@
 name: Build and Release Single EXE
 
+# 將觸發條件設定為 workflow_dispatch，代表僅限手動觸發
 on:
-  push:
-    tags:
-      - 'v*' # 當推送 v 開頭的標籤 (如 v1.0) 時觸發
+  workflow_dispatch:
 
 jobs:
   build:
@@ -23,11 +22,15 @@ jobs:
       run: nuget restore FormCrawlerApp.sln
 
     - name: Build Project
+      # 使用 MSBuild 進行 Release 編譯
       run: msbuild FormCrawlerApp.sln /p:Configuration=Release /p:Platform="Any CPU"
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: FormCrawlerApp/bin/Release/FormCrawlerApp.exe
+        # 由於是手動觸發，沒有 tag 名稱，我們可以使用 GitHub 提供的執行編號作為預設標籤
+        tag_name: manual-build-${{ github.run_number }}
+        name: Manual Build Release #${{ github.run_number }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
