@@ -1,12 +1,12 @@
 /*
- * 檔案功能：讀寫本機設定檔，負責儲存系統登入帳號與密碼。
+ * 檔案功能：讀寫本機設定檔，儲存帳密、登入網址及多個爬蟲網址。
  * 對應選單名稱：系統設定
- * 對應資料庫名稱：無 (純文字儲存)
- * 對應資料表名稱：無 (Settings.txt)
+ * 對應資料庫名稱：無 (Settings.txt)
  */
 using System;
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
 
 namespace FormCrawlerApp
 {
@@ -14,39 +14,35 @@ namespace FormCrawlerApp
     {
         private readonly string filePath = "Settings.txt";
 
-        public string Username { get; private set; } = "";
-        public string Password { get; private set; } = "";
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string LoginUrl { get; set; } = "http://192.168.1.83/eipplus/login.php";
+        public List<string> CrawlUrls { get; set; } = new List<string>();
 
-        public App_Settings()
-        {
-            Load();
-        }
+        public App_Settings() { Load(); }
 
         public void Load()
         {
             if (File.Exists(filePath))
             {
-                string content = File.ReadAllText(filePath, Encoding.UTF8);
-                string[] parts = content.Split('|');
-                if (parts.Length >= 2)
+                string[] parts = File.ReadAllText(filePath, Encoding.UTF8).Split('|');
+                if (parts.Length >= 4)
                 {
                     Username = parts[0];
                     Password = parts[1];
+                    LoginUrl = parts[2];
+                    // 將儲存的換行標記換回 List
+                    CrawlUrls = new List<string>(parts[3].Split(new[] { "^" }, StringSplitOptions.RemoveEmptyEntries));
                 }
             }
         }
 
-        public void Save(string user, string pass)
+        public void Save()
         {
-            Username = user;
-            Password = pass;
-            // 遵守純文字且以 '|' 分隔的資料規範
-            File.WriteAllText(filePath, $"{user}|{pass}", Encoding.UTF8);
-        }
-
-        public bool HasCredentials()
-        {
-            return !string.IsNullOrWhiteSpace(Username) && !string.IsNullOrWhiteSpace(Password);
+            // 使用 ^ 作為多個網址間的子分隔符，使用 | 作為大項分隔符
+            string urls = string.Join("^", CrawlUrls);
+            string content = $"{Username}|{Password}|{LoginUrl}|{urls}";
+            File.WriteAllText(filePath, content, Encoding.UTF8);
         }
     }
 }
