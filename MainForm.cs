@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace FormCrawlerApp
@@ -84,7 +85,9 @@ namespace FormCrawlerApp
             {
                 Location = new Point(175, 25),
                 Width = 400,
-                ReadOnly = true
+                ReadOnly = true,
+                // 設定為使用者指定的預設路徑
+                Text = @"D:\Tgeoffice\台灣玻璃工業股份有限公司-經手表單.html" 
             };
 
             btnProcessAndExport = new Button
@@ -93,7 +96,8 @@ namespace FormCrawlerApp
                 Location = new Point(15, 70),
                 Size = new Size(200, 40),
                 Cursor = Cursors.Hand,
-                Enabled = false
+                // 因已有預設路徑，將預設狀態改為 True 讓使用者可直接點擊
+                Enabled = true 
             };
             btnProcessAndExport.Click += BtnProcessAndExport_Click;
 
@@ -126,6 +130,12 @@ namespace FormCrawlerApp
             using (OpenFileDialog ofd = new OpenFileDialog())
             {
                 ofd.Filter = "HTML 檔案 (*.html)|*.html|所有檔案 (*.*)|*.*";
+                // 若預設檔案存在，則開啟對話框時定位在該資料夾
+                if (System.IO.File.Exists(txtSelectedFile.Text))
+                {
+                    ofd.InitialDirectory = System.IO.Path.GetDirectoryName(txtSelectedFile.Text);
+                }
+                
                 if (ofd.ShowDialog() == DialogResult.OK)
                 {
                     txtSelectedFile.Text = ofd.FileName;
@@ -138,6 +148,12 @@ namespace FormCrawlerApp
         {
             string sourceFile = txtSelectedFile.Text;
             if (string.IsNullOrEmpty(sourceFile)) return;
+
+            if (!System.IO.File.Exists(sourceFile))
+            {
+                MessageBox.Show($"找不到指定的檔案：\n{sourceFile}\n請確認路徑是否正確。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
 
             using (SaveFileDialog sfd = new SaveFileDialog())
             {
