@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗，採用 Code-First 動態生成控制項。
+ * 檔案功能：應用程式主視窗，採用 Code-First 動態生成控制項 (支援高 DPI 縮放)。
  * 對應選單名稱：主選單
  * 對應資料庫名稱：無
  * 對應資料表名稱：無
@@ -39,10 +39,12 @@ namespace FormCrawlerApp
             this.Text = "經手表單解析工具";
             this.Size = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
+            // 啟用 DPI 動態縮放模式，配合 Program.cs 達到極致清晰
+            this.AutoScaleMode = AutoScaleMode.Dpi; 
             this.Font = new Font("Microsoft JhengHei", 10F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(136)));
             this.BackColor = Color.WhiteSmoke;
 
-            // 主選單面板 (間距 15，框內與文字間距 10)
+            // 主選單面板
             menuPanel = new Panel
             {
                 Dock = DockStyle.Top,
@@ -60,7 +62,7 @@ namespace FormCrawlerApp
             };
             menuPanel.Controls.Add(titleLabel);
 
-            // 內容區塊面板 (與主選單間隔 15)
+            // 內容區塊面板
             contentPanel = new Panel
             {
                 Location = new Point(15, menuPanel.Height + 15),
@@ -71,7 +73,6 @@ namespace FormCrawlerApp
                 Padding = new Padding(10)
             };
 
-            // 控制項排版
             btnSelectHtml = new Button
             {
                 Text = "選擇 HTML 檔案",
@@ -86,8 +87,7 @@ namespace FormCrawlerApp
                 Location = new Point(175, 25),
                 Width = 400,
                 ReadOnly = true,
-                // 設定為使用者指定的預設路徑
-                Text = @"D:\Tgeoffice\台灣玻璃工業股份有限公司-經手表單.html" 
+                Text = @"D:\Tgeoffice\台灣玻璃工業股份有限公司-經手表單.html"
             };
 
             btnProcessAndExport = new Button
@@ -96,8 +96,7 @@ namespace FormCrawlerApp
                 Location = new Point(15, 70),
                 Size = new Size(200, 40),
                 Cursor = Cursors.Hand,
-                // 因已有預設路徑，將預設狀態改為 True 讓使用者可直接點擊
-                Enabled = true 
+                Enabled = true
             };
             btnProcessAndExport.Click += BtnProcessAndExport_Click;
 
@@ -117,7 +116,6 @@ namespace FormCrawlerApp
             this.Controls.Add(contentPanel);
             this.Controls.Add(menuPanel);
             
-            // 視窗縮放事件以維持動態排版
             this.Resize += (s, e) => 
             {
                 contentPanel.Width = this.ClientSize.Width - 30;
@@ -130,7 +128,6 @@ namespace FormCrawlerApp
             using (OpenFileDialog ofd = new OpenFileDialog())
             {
                 ofd.Filter = "HTML 檔案 (*.html)|*.html|所有檔案 (*.*)|*.*";
-                // 若預設檔案存在，則開啟對話框時定位在該資料夾
                 if (System.IO.File.Exists(txtSelectedFile.Text))
                 {
                     ofd.InitialDirectory = System.IO.Path.GetDirectoryName(txtSelectedFile.Text);
@@ -172,7 +169,6 @@ namespace FormCrawlerApp
             {
                 UIState(false, "正在解析 HTML 檔案...");
 
-                // 1. 爬蟲解析
                 List<string[]> parsedData = await crawler.ParseHtmlAsync(htmlPath);
                 
                 if (parsedData.Count == 0)
@@ -181,11 +177,9 @@ namespace FormCrawlerApp
                     return;
                 }
 
-                // 2. 存入 Txt 作為中繼 (遵守無資料庫規範)
                 UIState(false, "資料寫入中繼文字檔 (.txt)...");
                 txtStorage.SaveData(parsedData);
 
-                // 3. 從 Txt 讀取並匯出 Excel
                 UIState(false, "正在生成 Excel 檔案...");
                 List<string[]> storedData = txtStorage.LoadData();
                 await excelExporter.ExportAsync(excelPath, storedData);
@@ -198,7 +192,6 @@ namespace FormCrawlerApp
             }
         }
 
-        // 執行緒安全的 UI 更新方法
         private void UIState(bool isEnable, string statusMessage)
         {
             if (this.InvokeRequired)
