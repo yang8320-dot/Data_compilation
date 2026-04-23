@@ -1,6 +1,6 @@
 name: Build and Release Single EXE
 
-# 將觸發條件設定為 workflow_dispatch，代表僅限手動觸發
+# 僅限手動觸發
 on:
   workflow_dispatch:
 
@@ -18,18 +18,46 @@ jobs:
     - name: Setup NuGet
       uses: NuGet/setup-nuget@v1.2
 
+    # 自動尋找 .sln 檔案並還原 NuGet 套件
     - name: Restore NuGet Packages
-      run: nuget restore FormCrawlerApp.sln
+      run: |
+        $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
+        if ($sln) {
+            Write-Host "找到方案檔：$($sln.FullName)"
+            nuget restore $sln.FullName
+        } else {
+            Write-Error "找不到方案檔 (.sln)！請確認是否已將 .sln 與 .csproj 推送至 GitHub。"
+            exit 1
+        }
+      shell: pwsh
 
+    # 自動尋找 .sln 檔案並進行 Release 編譯
     - name: Build Project
-      # 使用 MSBuild 進行 Release 編譯
-      run: msbuild FormCrawlerApp.sln /p:Configuration=Release /p:Platform="Any CPU"
+      run: |
+        $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
+        msbuild $sln.FullName /p:Configuration=Release /p:Platform="Any CPU"
+      shell: pwsh
 
+    # 自動尋找編譯產出的 .exe (單一執行檔) 並複製到根目錄準備發佈
+    - name: Find EXE and Prepare Release
+      run: |
+        # 尋找 bin\Release 目錄下的 .exe 檔案 (排除 vshost 等除錯檔)
+        $exe = Get-ChildItem -Filter *.exe -Recurse | Where-Object { $_.DirectoryName -match "bin\\Release" -and $_.Name -notmatch "vshost" } | Select-Object -First 1
+        if ($exe) {
+            Write-Host "找到執行檔：$($exe.FullName)"
+            # 將執行檔複製到工作區根目錄，統一命名以便發佈
+            Copy-Item $exe.FullName -Destination .\ReleaseApp.exe
+        } else {
+            Write-Error "找不到編譯後的 .exe 檔案！"
+            exit 1
+        }
+      shell: pwsh
+
+    # 建立 Release 並夾帶剛才找到的 .exe 檔案
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: FormCrawlerApp/bin/Release/FormCrawlerApp.exe
-        # 由於是手動觸發，沒有 tag 名稱，我們可以使用 GitHub 提供的執行編號作為預設標籤
+        files: ReleaseApp.exe
         tag_name: manual-build-${{ github.run_number }}
         name: Manual Build Release #${{ github.run_number }}
       env:
