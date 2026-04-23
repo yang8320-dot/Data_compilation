@@ -1,0 +1,84 @@
+name: 打包專案原始碼環境 (Context)
+
+# 設定為手動觸發
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Create and Run Context Generator
+        run: |
+          cat << 'EOF' > generate_context.py
+          import os
+
+          # 設定目標路徑為當前根目錄
+          TARGET_DIR = '.' 
+          
+          # 定義需要抓取的檔案類型
+          valid_extensions = (
+              '.cs', '.csproj', '.sln', '.xml', '.yml', '.yaml', '.md', '.txt'
+          )
+          
+          # 排除不需要的編譯暫存與 Git 資料夾
+          exclude_dirs = {'bin', 'obj', '.git', '.vs', 'packages', 'TestResults', 'node_modules'}
+          # 排除輸出的結果檔，避免無限遞迴
+          exclude_files = {'0_Project_Tree.txt', 'Project_Full_Context.txt', 'generate_context.py'}
+
+          file_paths = []
+          full_content = []
+
+          for root, dirs, files in os.walk(TARGET_DIR):
+              # 排除特定目錄
+              dirs[:] = [d for d in dirs if d not in exclude_dirs]
+              
+              for file in files:
+                  if file.lower().endswith(valid_extensions) and file not in exclude_files:
+                      file_path = os.path.join(root, file)
+                      # 取得相對路徑
+                      rel_path = os.path.relpath(file_path, TARGET_DIR)
+                      file_paths.append(rel_path)
+                      
+                      try:
+                          # 讀取檔案內容
+                          with open(file_path, 'r', encoding='utf-8', errors='ignore') as code_f:
+                              content = code_f.read()
+                      except Exception as e:
+                          content = f"// 無法讀取此檔案內容: {e}\n"
+                      
+                      # 格式化標頭，清楚標記檔案路徑
+                      header = f"\n{'='*80}\n/// FILE: {rel_path} ///\n{'='*80}\n\n"
+                      full_content.append(header + content + "\n")
+
+          # 1. 產出目錄樹狀清單
+          with open('0_Project_Tree.txt', 'w', encoding='utf-8') as f_tree:
+              f_tree.write(f"# FormCrawlerApp 專案檔案結構清單 (總計 {len(file_paths)} 個檔案)\n\n")
+              for path in sorted(file_paths):
+                  f_tree.write(f"- {path}\n")
+
+          # 2. 產出完整代碼上下文
+          with open('Project_Full_Context.txt', 'w', encoding='utf-8') as f_all:
+              f_all.write(f"# FormCrawlerApp 專案完整代碼總覽\n")
+              f_all.write("".join(full_content))
+
+          print(f"成功生成目錄與完整內容，共計 {len(file_paths)} 個檔案。")
+          EOF
+          python generate_context.py
+
+      # 將產出的文字檔上傳到 GitHub Actions 頁面供下載
+      - name: Upload Context Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FormCrawlerApp-Project-Context
+          path: |
+            0_Project_Tree.txt
+            Project_Full_Context.txt
