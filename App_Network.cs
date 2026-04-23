@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求與自動登入，維護 Session Cookie，並抓取目標網頁內容。
+ * 檔案功能：處理 HTTP 網路請求，具備「智慧判斷登入狀態」功能，並維護 Session。
  * 對應選單名稱：網路連線
  * 對應資料庫名稱：無
  * 對應資料表名稱：無
@@ -31,7 +31,7 @@ namespace FormCrawlerApp
             client.Timeout = TimeSpan.FromSeconds(30);
         }
 
-        // 執行背景登入
+        // 執行背景登入 (具備自動判斷機制)
         public async Task<bool> LoginAsync(string username, string password)
         {
             try
@@ -45,20 +45,32 @@ namespace FormCrawlerApp
                     loginUrl = "http://192.168.1.83/eipplus/login.php"; // 預設防呆網址
                 }
 
-                // 設定 POST 參數 (根據網頁原始碼，欄位名稱為 login 與 passwd)
+                // 【第一階段：檢查是否已登入】
+                // 先對登入網址發送 GET 請求，抓取目前的網頁原始碼
+                HttpResponseMessage checkResponse = await client.GetAsync(loginUrl);
+                string checkContent = await checkResponse.Content.ReadAsStringAsync();
+
+                // 根據網頁原始碼，登入畫面會有 name="loginfrm" 或 name="passwd"
+                // 如果沒有這些特徵，代表已經在登入狀態 (沒看到登入畫面)，直接回傳 true 開始爬蟲
+                if (!checkContent.Contains("loginfrm") && !checkContent.Contains("passwd"))
+                {
+                    return true; 
+                }
+
+                // 【第二階段：執行登入】
+                // 如果畫面上確實有登入表單，才設定 POST 參數送出帳密
                 var content = new FormUrlEncodedContent(new[]
                 {
                     new KeyValuePair<string, string>("login", username),
                     new KeyValuePair<string, string>("passwd", password)
                 });
 
-                // 發送登入請求
                 HttpResponseMessage response = await client.PostAsync(loginUrl, content);
                 response.EnsureSuccessStatusCode();
 
                 string responseContent = await response.Content.ReadAsStringAsync();
 
-                // 簡單驗證：若回應內容仍包含登入表單的輸入框，通常代表帳密錯誤或登入失敗
+                // 再次驗證：如果登入後的回應內容仍包含登入表單，通常代表帳密錯誤
                 if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
                 {
                     return false;
@@ -77,7 +89,6 @@ namespace FormCrawlerApp
         {
             try
             {
-                // 發送 GET 請求抓取網頁內容
                 HttpResponseMessage response = await client.GetAsync(url);
                 response.EnsureSuccessStatusCode(); // 確保 HTTP 狀態碼為 200 OK
                 
