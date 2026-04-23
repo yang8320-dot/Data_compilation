@@ -65,14 +65,16 @@ namespace FormCrawlerApp
                 Location = new Point(15, 20)
             };
             
+            // 獨立的設定按鈕：方便使用者定期回來更新密碼
             btnSettings = new Button
             {
-                Text = "⚙️ 登入設定",
-                Size = new Size(120, 35),
+                Text = "⚙️ 帳密設定 (更新密碼)",
+                Size = new Size(200, 35),
                 Cursor = Cursors.Hand,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            btnSettings.Location = new Point(this.ClientSize.Width - 135, 12);
+            // 根據按鈕新寬度調整 X 座標
+            btnSettings.Location = new Point(this.ClientSize.Width - 215, 12);
             btnSettings.Click += (s, e) => { new SettingsForm(settings).ShowDialog(); };
 
             menuPanel.Controls.Add(titleLabel);
@@ -106,6 +108,7 @@ namespace FormCrawlerApp
                 Text = @"D:\Tgeoffice\台灣玻璃工業股份有限公司-經手表單.html"
             };
 
+            // 獨立的執行按鈕
             btnProcessAndExport = new Button
             {
                 Text = "執行登入並匯出 Excel",
@@ -132,11 +135,12 @@ namespace FormCrawlerApp
             this.Controls.Add(contentPanel);
             this.Controls.Add(menuPanel);
             
+            // 視窗縮放事件維持排版
             this.Resize += (s, e) => 
             {
                 contentPanel.Width = this.ClientSize.Width - 30;
                 contentPanel.Height = this.ClientSize.Height - menuPanel.Height - 30;
-                btnSettings.Location = new Point(this.ClientSize.Width - 135, 12);
+                btnSettings.Location = new Point(this.ClientSize.Width - 215, 12);
             };
         }
 
@@ -160,12 +164,11 @@ namespace FormCrawlerApp
 
         private async void BtnProcessAndExport_Click(object sender, EventArgs e)
         {
-            // 步驟 0：檢查是否已設定帳密
             if (!settings.HasCredentials())
             {
-                MessageBox.Show("請先點擊右上角「登入設定」設定 EIP 帳號與密碼。", "尚未設定帳密", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("請先點擊右上角「帳密設定」設定 EIP 帳號與密碼。", "尚未設定帳密", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 new SettingsForm(settings).ShowDialog();
-                if (!settings.HasCredentials()) return; // 若使用者還是沒設定就取消
+                if (!settings.HasCredentials()) return;
             }
 
             string sourceFile = txtSelectedFile.Text;
@@ -190,7 +193,6 @@ namespace FormCrawlerApp
         {
             try
             {
-                // 步驟 1：執行 HTTP 自動登入
                 UIState(false, "系統連線中：正在登入 EIP 系統...");
                 bool isLoginSuccess = await network.LoginAsync(settings.Username, settings.Password);
                 
@@ -201,7 +203,6 @@ namespace FormCrawlerApp
                     return;
                 }
 
-                // 步驟 2：爬蟲解析 (解析本地的 HTML 檔案)
                 UIState(false, "登入成功！正在解析 HTML 檔案...");
                 List<string[]> parsedData = await crawler.ParseHtmlAsync(htmlPath);
                 
@@ -211,11 +212,9 @@ namespace FormCrawlerApp
                     return;
                 }
 
-                // 步驟 3：存入 Txt 作為中繼
                 UIState(false, "資料寫入中繼文字檔 (.txt)...");
                 txtStorage.SaveData(parsedData);
 
-                // 步驟 4：從 Txt 讀取並匯出 Excel
                 UIState(false, "正在生成 Excel 檔案...");
                 List<string[]> storedData = txtStorage.LoadData();
                 await excelExporter.ExportAsync(excelPath, storedData);
