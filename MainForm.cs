@@ -1,12 +1,8 @@
-/*
- * 檔案功能：應用程式主視窗，採用 Code-First 動態生成控制項，並整合網路登入流程。
- * 對應選單名稱：主選單
- * 對應資料庫名稱：無
- * 對應資料表名稱：無
- */
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -14,231 +10,91 @@ namespace FormCrawlerApp
 {
     public class MainForm : Form
     {
-        private Panel menuPanel;
-        private Panel contentPanel;
-        private Button btnSelectHtml;
-        private Button btnProcessAndExport;
-        private Button btnSettings;
+        private Button btnExecute, btnSettings, btnOpenFolder;
         private Label lblStatus;
-        private TextBox txtSelectedFile;
-
-        private App_Crawler crawler;
-        private App_TxtStorage txtStorage;
-        private App_ExcelExporter excelExporter;
         private App_Settings settings;
         private App_Network network;
+        private App_Crawler crawler;
+        private App_ExcelExporter excelExporter;
+        private string lastExportPath = @"D:\Tgeoffice"; // 預設資料夾
 
         public MainForm()
         {
-            crawler = new App_Crawler();
-            txtStorage = new App_TxtStorage();
-            excelExporter = new App_ExcelExporter();
             settings = new App_Settings();
             network = new App_Network();
-
+            crawler = new App_Crawler();
+            excelExporter = new App_ExcelExporter();
             InitializeUI();
         }
 
         private void InitializeUI()
         {
-            this.Text = "經手表單解析工具";
-            this.Size = new Size(800, 600);
+            this.Text = "經手表單自動化工具";
+            this.Size = new Size(800, 450);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.AutoScaleMode = AutoScaleMode.Dpi; 
-            this.Font = new Font("Microsoft JhengHei", 10F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(136)));
-            this.BackColor = Color.WhiteSmoke;
+            this.AutoScaleMode = AutoScaleMode.Dpi;
+            this.Font = new Font("Microsoft JhengHei", 10F);
 
-            // 主選單面板
-            menuPanel = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 60,
-                BackColor = Color.LightSteelBlue,
-                Padding = new Padding(10)
-            };
-
-            Label titleLabel = new Label
-            {
-                Text = "系統選單",
-                Font = new Font("Microsoft JhengHei", 12F, FontStyle.Bold),
-                AutoSize = true,
-                Location = new Point(15, 20)
-            };
+            // 上方選單區
+            Panel menuPanel = new Panel { Dock = DockStyle.Top, Height = 70, BackColor = Color.LightSteelBlue };
+            btnSettings = new Button { Text = "⚙️ 帳密與網址設定", Location = new Point(15, 15), Size = new Size(180, 40), Cursor = Cursors.Hand };
+            btnSettings.Click += (s, e) => new SettingsForm(settings).ShowDialog();
             
-            // 獨立的設定按鈕：方便使用者定期回來更新密碼
-            btnSettings = new Button
-            {
-                Text = "⚙️ 帳密設定 (更新密碼)",
-                Size = new Size(200, 35),
-                Cursor = Cursors.Hand,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            // 根據按鈕新寬度調整 X 座標
-            btnSettings.Location = new Point(this.ClientSize.Width - 215, 12);
-            btnSettings.Click += (s, e) => { new SettingsForm(settings).ShowDialog(); };
-
-            menuPanel.Controls.Add(titleLabel);
             menuPanel.Controls.Add(btnSettings);
 
-            // 內容區塊面板
-            contentPanel = new Panel
-            {
-                Location = new Point(15, menuPanel.Height + 15),
-                Width = this.ClientSize.Width - 30,
-                Height = this.ClientSize.Height - menuPanel.Height - 30,
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-                BackColor = Color.White,
-                Padding = new Padding(10)
+            // 主內容區
+            btnExecute = new Button { Text = "🚀 執行登入並批次匯入", Location = new Point(30, 100), Size = new Size(250, 60), Font = new Font("Microsoft JhengHei", 12F, FontStyle.Bold), BackColor = Color.PaleGreen, Cursor = Cursors.Hand };
+            btnExecute.Click += BtnExecute_Click;
+
+            btnOpenFolder = new Button { Text = "📁 開啟下載資料夾", Location = new Point(300, 100), Size = new Size(200, 60), Cursor = Cursors.Hand };
+            btnOpenFolder.Click += (s, e) => {
+                if (Directory.Exists(lastExportPath)) Process.Start("explorer.exe", lastExportPath);
+                else MessageBox.Show("資料夾不存在！");
             };
 
-            btnSelectHtml = new Button
-            {
-                Text = "選擇 HTML 檔案",
-                Location = new Point(15, 15),
-                Size = new Size(150, 40),
-                Cursor = Cursors.Hand
-            };
-            btnSelectHtml.Click += BtnSelectHtml_Click;
+            lblStatus = new Label { Text = "系統就緒。請確認網址清單後執行。", Location = new Point(30, 200), AutoSize = true, ForeColor = Color.Gray };
 
-            txtSelectedFile = new TextBox
-            {
-                Location = new Point(175, 25),
-                Width = 400,
-                ReadOnly = true,
-                Text = @"D:\Tgeoffice\台灣玻璃工業股份有限公司-經手表單.html"
-            };
-
-            // 獨立的執行按鈕
-            btnProcessAndExport = new Button
-            {
-                Text = "執行登入並匯出 Excel",
-                Location = new Point(15, 70),
-                Size = new Size(200, 40),
-                Cursor = Cursors.Hand,
-                Enabled = true
-            };
-            btnProcessAndExport.Click += BtnProcessAndExport_Click;
-
-            lblStatus = new Label
-            {
-                Text = "準備就緒...",
-                Location = new Point(15, 130),
-                AutoSize = true,
-                ForeColor = Color.DarkGreen
-            };
-
-            contentPanel.Controls.Add(btnSelectHtml);
-            contentPanel.Controls.Add(txtSelectedFile);
-            contentPanel.Controls.Add(btnProcessAndExport);
-            contentPanel.Controls.Add(lblStatus);
-
-            this.Controls.Add(contentPanel);
+            this.Controls.Add(btnExecute);
+            this.Controls.Add(btnOpenFolder);
+            this.Controls.Add(lblStatus);
             this.Controls.Add(menuPanel);
-            
-            // 視窗縮放事件維持排版
-            this.Resize += (s, e) => 
-            {
-                contentPanel.Width = this.ClientSize.Width - 30;
-                contentPanel.Height = this.ClientSize.Height - menuPanel.Height - 30;
-                btnSettings.Location = new Point(this.ClientSize.Width - 215, 12);
-            };
         }
 
-        private void BtnSelectHtml_Click(object sender, EventArgs e)
+        private async void BtnExecute_Click(object sender, EventArgs e)
         {
-            using (OpenFileDialog ofd = new OpenFileDialog())
-            {
-                ofd.Filter = "HTML 檔案 (*.html)|*.html|所有檔案 (*.*)|*.*";
-                if (System.IO.File.Exists(txtSelectedFile.Text))
-                {
-                    ofd.InitialDirectory = System.IO.Path.GetDirectoryName(txtSelectedFile.Text);
-                }
-                
-                if (ofd.ShowDialog() == DialogResult.OK)
-                {
-                    txtSelectedFile.Text = ofd.FileName;
-                    btnProcessAndExport.Enabled = true;
-                }
-            }
-        }
-
-        private async void BtnProcessAndExport_Click(object sender, EventArgs e)
-        {
-            if (!settings.HasCredentials())
-            {
-                MessageBox.Show("請先點擊右上角「帳密設定」設定 EIP 帳號與密碼。", "尚未設定帳密", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                new SettingsForm(settings).ShowDialog();
-                if (!settings.HasCredentials()) return;
-            }
-
-            string sourceFile = txtSelectedFile.Text;
-            if (string.IsNullOrEmpty(sourceFile) || !System.IO.File.Exists(sourceFile))
-            {
-                MessageBox.Show($"找不到指定的檔案：\n{sourceFile}\n請確認路徑是否正確。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (settings.CrawlUrls.Count == 0) {
+                MessageBox.Show("請先在設定中輸入爬蟲網址清單。");
                 return;
             }
 
-            using (SaveFileDialog sfd = new SaveFileDialog())
-            {
-                sfd.Filter = "Excel 檔案 (*.xlsx)|*.xlsx";
-                sfd.FileName = "表單匯出資料.xlsx";
-                if (sfd.ShowDialog() == DialogResult.OK)
+            try {
+                UIState(false, "正在登入系統...");
+                bool login = await network.LoginAsync(settings.Username, settings.Password); // 內部會讀取 settings.LoginUrl
+                if (!login) { UIState(true, "登入失敗！"); return; }
+
+                List<string[]> allData = new List<string[]>();
+                foreach (string url in settings.CrawlUrls)
                 {
-                    await ProcessWorkflowAsync(sourceFile, sfd.FileName);
+                    UIState(false, $"正在抓取：{url}");
+                    // 這裡模擬網路抓取內容，App_Network 需要新增 GetHtmlAsync 方法
+                    string html = await network.GetHtmlAsync(url);
+                    var data = await crawler.ParseHtmlContentAsync(html);
+                    allData.AddRange(data);
                 }
+
+                string fileName = Path.Combine(lastExportPath, $"批次匯出_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
+                if (!Directory.Exists(lastExportPath)) Directory.CreateDirectory(lastExportPath);
+
+                await excelExporter.ExportAsync(fileName, allData);
+                UIState(true, $"完成！已匯出 {allData.Count} 筆資料至 Excel。");
             }
+            catch (Exception ex) { UIState(true, $"發生錯誤：{ex.Message}"); }
         }
 
-        private async Task ProcessWorkflowAsync(string htmlPath, string excelPath)
-        {
-            try
-            {
-                UIState(false, "系統連線中：正在登入 EIP 系統...");
-                bool isLoginSuccess = await network.LoginAsync(settings.Username, settings.Password);
-                
-                if (!isLoginSuccess)
-                {
-                    UIState(true, "登入失敗：帳號或密碼錯誤，請重新設定。");
-                    MessageBox.Show("登入 EIP 系統失敗，請確認帳號與密碼是否正確。", "登入失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                UIState(false, "登入成功！正在解析 HTML 檔案...");
-                List<string[]> parsedData = await crawler.ParseHtmlAsync(htmlPath);
-                
-                if (parsedData.Count == 0)
-                {
-                    UIState(true, "未找到符合的資料，請確認 HTML 結構。");
-                    return;
-                }
-
-                UIState(false, "資料寫入中繼文字檔 (.txt)...");
-                txtStorage.SaveData(parsedData);
-
-                UIState(false, "正在生成 Excel 檔案...");
-                List<string[]> storedData = txtStorage.LoadData();
-                await excelExporter.ExportAsync(excelPath, storedData);
-
-                UIState(true, "作業完成！已成功匯出至：" + excelPath);
-            }
-            catch (Exception ex)
-            {
-                UIState(true, "發生錯誤：" + ex.Message);
-            }
-        }
-
-        private void UIState(bool isEnable, string statusMessage)
-        {
-            if (this.InvokeRequired)
-            {
-                this.Invoke(new Action(() => UIState(isEnable, statusMessage)));
-                return;
-            }
-            
-            btnSelectHtml.Enabled = isEnable;
-            btnProcessAndExport.Enabled = isEnable && !string.IsNullOrEmpty(txtSelectedFile.Text);
-            btnSettings.Enabled = isEnable;
-            lblStatus.Text = statusMessage;
+        private void UIState(bool enable, string msg) {
+            btnExecute.Enabled = enable;
+            btnSettings.Enabled = enable;
+            lblStatus.Text = msg;
         }
     }
 }
