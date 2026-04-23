@@ -1,5 +1,5 @@
 /*
- * 檔案功能：解析 HTML 檔案，抓取表格內容與超連結 (具備嚴格防呆與抗干擾機制)。
+ * 檔案功能：解析 HTML 檔案，抓取表格內容與超連結 (防彈級解析，支援自動偵測欄位位移)。
  * 對應選單名稱：網頁爬蟲
  * 對應資料庫名稱：無
  * 對應資料表名稱：無
@@ -13,7 +13,6 @@ namespace FormCrawlerApp
 {
     public class App_Crawler
     {
-        // 非同步解析 HTML 檔案
         public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
         {
             return await Task.Run(() =>
@@ -22,52 +21,68 @@ namespace FormCrawlerApp
                 HtmlDocument doc = new HtmlDocument();
                 doc.Load(htmlFilePath, System.Text.Encoding.UTF8);
 
-                // 抓取所有的 <tr> 標籤 (不限定在特定的 table 內以增加相容性)
                 HtmlNodeCollection rows = doc.DocumentNode.SelectNodes("//tr");
                 if (rows == null) return extractedData;
 
                 foreach (HtmlNode row in rows)
                 {
-                    // 修正 1：使用 "./td" 確保只抓取「直屬」的 td，避免抓到巢狀表格導致欄位暴增或錯亂
-                    HtmlNodeCollection cells = row.SelectNodes("./td");
-                    
-                    // 修正 2：【關鍵防呆】依照系統截圖，真實資料列有 9 個欄位 (包含第 1 欄的 Checkbox)
-                    // 若小於 9，代表這是網頁的其他排版表格，直接略過，這能徹底解決 IndexOutOfRange！
-                    if (cells == null || cells.Count < 9) continue;
-
-                    // 修正 3：略過 Checkbox (索引 0)，從索引 1 開始對應實際資料
-                    string no = cells[1].InnerText.Trim();
-                    string formNo = cells[2].InnerText.Trim();
-                    
-                    // 修正 4：進階防呆，確認單號不為空且長度合理，確保這真的是資料列而非標題列
-                    if (string.IsNullOrEmpty(formNo) || formNo.Length < 5) continue;
-
-                    string applyDate = cells[3].InnerText.Trim();
-                    string applicant = cells[4].InnerText.Trim();
-                    string subject = cells[5].InnerText.Trim();
-                    string stepName = cells[6].InnerText.Trim();
-                    string status = cells[7].InnerText.Trim();
-                    string processTime = cells[8].InnerText.Trim();
-
-                    // 尋找超連結 (通常綁定在表單單號或主旨上)
-                    string link = "";
-                    HtmlNode linkNode = row.SelectSingleNode(".//a[@href]");
-                    if (linkNode != null)
+                    try 
                     {
-                        link = linkNode.GetAttributeValue("href", "");
-                        // 處理相對路徑
-                        if (!link.StartsWith("http"))
-                        {
-                            link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
-                        }
-                    }
+                        HtmlNodeCollection cells = row.SelectNodes("./td");
+                        if (cells == null || cells.Count < 5) continue; // 小於 5 欄絕對不是我們要的資料
 
-                    // 寫入陣列 (維持 9 個欄位的輸出格式，無須修改其他模組)
-                    extractedData.Add(new string[] { no, formNo, applyDate, applicant, subject, stepName, status, processTime, link });
+                        // 自動偵測偏移量：判斷第一欄是否為 Checkbox
+                        int offset = 0;
+                        if (cells[0].InnerHtml.ToLower().Contains("checkbox"))
+                        {
+                            offset = 1; // 如果第一欄是 Checkbox，資料欄位往後延遲一格
+                        }
+
+                        // 確保扣除偏移量後，仍有足夠的 8 個欄位可抓取
+                        if (cells.Count < offset + 8) continue;
+
+                        string no = CleanText(cells[offset + 0].InnerText);
+                        string formNo = CleanText(cells[offset + 1].InnerText);
+
+                        // 嚴格過濾：單號通常要有一定長度，若無則跳過 (防抓到表頭或空行)
+                        if (string.IsNullOrEmpty(formNo) || formNo.Length < 5) continue;
+
+                        string applyDate = CleanText(cells[offset + 2].InnerText);
+                        string applicant = CleanText(cells[offset + 3].InnerText);
+                        string subject = CleanText(cells[offset + 4].InnerText);
+                        string stepName = CleanText(cells[offset + 5].InnerText);
+                        string status = CleanText(cells[offset + 6].InnerText);
+                        string processTime = CleanText(cells[offset + 7].InnerText);
+
+                        string link = "";
+                        HtmlNode linkNode = row.SelectSingleNode(".//a[@href]");
+                        if (linkNode != null)
+                        {
+                            link = linkNode.GetAttributeValue("href", "");
+                            if (!link.StartsWith("http"))
+                            {
+                                link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
+                            }
+                        }
+
+                        extractedData.Add(new string[] { no, formNo, applyDate, applicant, subject, stepName, status, processTime, link });
+                    }
+                    catch 
+                    {
+                        // 若單一列發生任何不可預期錯誤直接跳過，絕不讓程式崩潰
+                        continue; 
+                    }
                 }
 
                 return extractedData;
             });
+        }
+
+        // 輔助方法：清除 HTML 特殊字元與換行符號
+        private string CleanText(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "";
+            return HtmlEntity.DeEntitize(input).Replace("\r", "").Replace("\n", "").Trim();
         }
     }
 }
