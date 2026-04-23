@@ -1,0 +1,33 @@
+name: Build and Release Single EXE
+
+on:
+  push:
+    tags:
+      - 'v*' # 當推送 v 開頭的標籤 (如 v1.0) 時觸發
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1.2
+
+    - name: Restore NuGet Packages
+      run: nuget restore FormCrawlerApp.sln
+
+    - name: Build Project
+      run: msbuild FormCrawlerApp.sln /p:Configuration=Release /p:Platform="Any CPU"
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: FormCrawlerApp/bin/Release/FormCrawlerApp.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
