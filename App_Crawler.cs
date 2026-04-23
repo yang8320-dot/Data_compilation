@@ -1,5 +1,5 @@
 /*
- * 檔案功能：解析 HTML 檔案，抓取表格內容與超連結 (防彈級解析，支援自動偵測欄位位移)。
+ * 檔案功能：解析 HTML 內容，抓取表格內容與超連結 (防彈級解析，支援自動偵測欄位位移)。
  * 對應選單名稱：網頁爬蟲
  * 對應資料庫名稱：無
  * 對應資料表名稱：無
@@ -13,13 +13,16 @@ namespace FormCrawlerApp
 {
     public class App_Crawler
     {
-        public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
+        // 💡 新增：處理直接傳入的 HTML 字串 (批次爬蟲專用)
+        public async Task<List<string[]>> ParseHtmlContentAsync(string htmlContent)
         {
             return await Task.Run(() =>
             {
                 List<string[]> extractedData = new List<string[]>();
                 HtmlDocument doc = new HtmlDocument();
-                doc.Load(htmlFilePath, System.Text.Encoding.UTF8);
+                
+                // 注意這裡改為 LoadHtml 來解析純文字字串，而不是讀取實體檔案
+                doc.LoadHtml(htmlContent);
 
                 HtmlNodeCollection rows = doc.DocumentNode.SelectNodes("//tr");
                 if (rows == null) return extractedData;
@@ -75,6 +78,17 @@ namespace FormCrawlerApp
                 }
 
                 return extractedData;
+            });
+        }
+
+        // 保留原本讀取本機檔案的方法，維持相容性
+        public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
+        {
+            return await Task.Run(() =>
+            {
+                HtmlDocument doc = new HtmlDocument();
+                doc.Load(htmlFilePath, System.Text.Encoding.UTF8); // 讀取實體檔案
+                return ParseHtmlContentAsync(doc.DocumentNode.OuterHtml).Result; // 直接呼叫新方法進行共用解析
             });
         }
 
