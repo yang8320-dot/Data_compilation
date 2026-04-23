@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗，採用 Code-First 動態生成控制項 (支援高 DPI 縮放)。
+ * 檔案功能：應用程式主視窗，採用 Code-First 動態生成控制項，並整合網路登入流程。
  * 對應選單名稱：主選單
  * 對應資料庫名稱：無
  * 對應資料表名稱：無
@@ -18,18 +18,23 @@ namespace FormCrawlerApp
         private Panel contentPanel;
         private Button btnSelectHtml;
         private Button btnProcessAndExport;
+        private Button btnSettings;
         private Label lblStatus;
         private TextBox txtSelectedFile;
 
         private App_Crawler crawler;
         private App_TxtStorage txtStorage;
         private App_ExcelExporter excelExporter;
+        private App_Settings settings;
+        private App_Network network;
 
         public MainForm()
         {
             crawler = new App_Crawler();
             txtStorage = new App_TxtStorage();
             excelExporter = new App_ExcelExporter();
+            settings = new App_Settings();
+            network = new App_Network();
 
             InitializeUI();
         }
@@ -39,7 +44,6 @@ namespace FormCrawlerApp
             this.Text = "經手表單解析工具";
             this.Size = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
-            // 啟用 DPI 動態縮放模式，配合 Program.cs 達到極致清晰
             this.AutoScaleMode = AutoScaleMode.Dpi; 
             this.Font = new Font("Microsoft JhengHei", 10F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(136)));
             this.BackColor = Color.WhiteSmoke;
@@ -60,7 +64,19 @@ namespace FormCrawlerApp
                 AutoSize = true,
                 Location = new Point(15, 20)
             };
+            
+            btnSettings = new Button
+            {
+                Text = "⚙️ 登入設定",
+                Size = new Size(120, 35),
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            btnSettings.Location = new Point(this.ClientSize.Width - 135, 12);
+            btnSettings.Click += (s, e) => { new SettingsForm(settings).ShowDialog(); };
+
             menuPanel.Controls.Add(titleLabel);
+            menuPanel.Controls.Add(btnSettings);
 
             // 內容區塊面板
             contentPanel = new Panel
@@ -92,7 +108,7 @@ namespace FormCrawlerApp
 
             btnProcessAndExport = new Button
             {
-                Text = "執行解析並匯出 Excel",
+                Text = "執行登入並匯出 Excel",
                 Location = new Point(15, 70),
                 Size = new Size(200, 40),
                 Cursor = Cursors.Hand,
@@ -120,6 +136,7 @@ namespace FormCrawlerApp
             {
                 contentPanel.Width = this.ClientSize.Width - 30;
                 contentPanel.Height = this.ClientSize.Height - menuPanel.Height - 30;
+                btnSettings.Location = new Point(this.ClientSize.Width - 135, 12);
             };
         }
 
@@ -143,10 +160,16 @@ namespace FormCrawlerApp
 
         private async void BtnProcessAndExport_Click(object sender, EventArgs e)
         {
-            string sourceFile = txtSelectedFile.Text;
-            if (string.IsNullOrEmpty(sourceFile)) return;
+            // 步驟 0：檢查是否已設定帳密
+            if (!settings.HasCredentials())
+            {
+                MessageBox.Show("請先點擊右上角「登入設定」設定 EIP 帳號與密碼。", "尚未設定帳密", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                new SettingsForm(settings).ShowDialog();
+                if (!settings.HasCredentials()) return; // 若使用者還是沒設定就取消
+            }
 
-            if (!System.IO.File.Exists(sourceFile))
+            string sourceFile = txtSelectedFile.Text;
+            if (string.IsNullOrEmpty(sourceFile) || !System.IO.File.Exists(sourceFile))
             {
                 MessageBox.Show($"找不到指定的檔案：\n{sourceFile}\n請確認路徑是否正確。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
@@ -167,8 +190,19 @@ namespace FormCrawlerApp
         {
             try
             {
-                UIState(false, "正在解析 HTML 檔案...");
+                // 步驟 1：執行 HTTP 自動登入
+                UIState(false, "系統連線中：正在登入 EIP 系統...");
+                bool isLoginSuccess = await network.LoginAsync(settings.Username, settings.Password);
+                
+                if (!isLoginSuccess)
+                {
+                    UIState(true, "登入失敗：帳號或密碼錯誤，請重新設定。");
+                    MessageBox.Show("登入 EIP 系統失敗，請確認帳號與密碼是否正確。", "登入失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
 
+                // 步驟 2：爬蟲解析 (解析本地的 HTML 檔案)
+                UIState(false, "登入成功！正在解析 HTML 檔案...");
                 List<string[]> parsedData = await crawler.ParseHtmlAsync(htmlPath);
                 
                 if (parsedData.Count == 0)
@@ -177,9 +211,11 @@ namespace FormCrawlerApp
                     return;
                 }
 
+                // 步驟 3：存入 Txt 作為中繼
                 UIState(false, "資料寫入中繼文字檔 (.txt)...");
                 txtStorage.SaveData(parsedData);
 
+                // 步驟 4：從 Txt 讀取並匯出 Excel
                 UIState(false, "正在生成 Excel 檔案...");
                 List<string[]> storedData = txtStorage.LoadData();
                 await excelExporter.ExportAsync(excelPath, storedData);
@@ -202,6 +238,7 @@ namespace FormCrawlerApp
             
             btnSelectHtml.Enabled = isEnable;
             btnProcessAndExport.Enabled = isEnable && !string.IsNullOrEmpty(txtSelectedFile.Text);
+            btnSettings.Enabled = isEnable;
             lblStatus.Text = statusMessage;
         }
     }
