@@ -1,13 +1,7 @@
-name: Build and Release Single EXE
+name: Build and Upload Single EXE
 
 on:
   workflow_dispatch:
-
-# ==========================================
-# 新增此區塊：賦予 Action 建立 Release 的寫入權限
-permissions:
-  contents: write
-# ==========================================
 
 jobs:
   build:
@@ -23,6 +17,7 @@ jobs:
     - name: Setup NuGet
       uses: NuGet/setup-nuget@v1.2
 
+    # 自動尋找 .sln 檔案並還原 NuGet 套件
     - name: Restore NuGet Packages
       run: |
         $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
@@ -35,29 +30,29 @@ jobs:
         }
       shell: pwsh
 
+    # 自動尋找 .sln 檔案並進行 Release 編譯
     - name: Build Project
       run: |
         $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
         msbuild $sln.FullName /p:Configuration=Release /p:Platform="Any CPU"
       shell: pwsh
 
-    - name: Find EXE and Prepare Release
+    # 自動尋找編譯產出的 .exe 並複製到根目錄
+    - name: Find EXE
       run: |
         $exe = Get-ChildItem -Filter *.exe -Recurse | Where-Object { $_.DirectoryName -match "bin\\Release" -and $_.Name -notmatch "vshost" } | Select-Object -First 1
         if ($exe) {
             Write-Host "找到執行檔：$($exe.FullName)"
-            Copy-Item $exe.FullName -Destination .\ReleaseApp.exe
+            Copy-Item $exe.FullName -Destination .\FormCrawlerApp.exe
         } else {
             Write-Error "找不到編譯後的 .exe 檔案！"
             exit 1
         }
       shell: pwsh
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
+    # 將 .exe 檔案上傳到當前 Action 頁面的 Artifacts 區塊
+    - name: Upload EXE to Action Page
+      uses: actions/upload-artifact@v4
       with:
-        files: ReleaseApp.exe
-        tag_name: manual-build-${{ github.run_number }}
-        name: Manual Build Release #${{ github.run_number }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: FormCrawlerApp-Portable-EXE
+        path: .\FormCrawlerApp.exe
