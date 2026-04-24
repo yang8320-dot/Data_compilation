@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，具備「智慧判斷登入狀態」，並穿透企業 Proxy (解決 407 錯誤)。
+ * 檔案功能：處理 HTTP 網路請求，加入真實瀏覽器偽裝 (User-Agent) 與動態隱藏欄位抓取。
  * 對應選單名稱：網路連線
  */
 using System;
@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using HtmlAgilityPack; // 💡 引入 HtmlAgilityPack 來解析隱藏欄位
 
 namespace FormCrawlerApp
 {
@@ -20,9 +21,7 @@ namespace FormCrawlerApp
         {
             cookieContainer = new CookieContainer();
             
-            // 【關鍵修正】取得系統當前的 Proxy 設定 (跟隨 Windows / IE / Edge 設定)
             IWebProxy systemProxy = WebRequest.GetSystemWebProxy();
-            // 自動帶入你目前登入這台電腦的 Windows 帳號權限，用來通過 Proxy 的 407 驗證
             systemProxy.Credentials = CredentialCache.DefaultCredentials;
 
             HttpClientHandler handler = new HttpClientHandler
@@ -31,12 +30,16 @@ namespace FormCrawlerApp
                 UseCookies = true,
                 Proxy = systemProxy,
                 UseProxy = true,
-                // 同時告訴 HttpClient 本身也使用預設權限
                 UseDefaultCredentials = true 
             };
             
             client = new HttpClient(handler);
             client.Timeout = TimeSpan.FromSeconds(30);
+
+            // 【關鍵升級 1】偽裝成真實的 Google Chrome 瀏覽器，防止伺服器阻擋機器人
+            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8");
+            client.DefaultRequestHeaders.Add("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7");
         }
 
         private async Task<string> SafeReadAsStringAsync(HttpResponseMessage response)
@@ -65,11 +68,34 @@ namespace FormCrawlerApp
                     return true; 
                 }
 
-                var content = new FormUrlEncodedContent(new[]
+                // 【關鍵升級 2】動態抓取登入頁面上的所有隱藏欄位 (Hidden Fields)
+                var formData = new List<KeyValuePair<string, string>>();
+                HtmlDocument doc = new HtmlDocument();
+                doc.LoadHtml(checkContent);
+
+                // 掃描畫面上所有的 input 標籤
+                var inputs = doc.DocumentNode.SelectNodes("//input");
+                if (inputs != null)
                 {
-                    new KeyValuePair<string, string>("login", username),
-                    new KeyValuePair<string, string>("passwd", password)
-                });
+                    foreach (var input in inputs)
+                    {
+                        string name = input.GetAttributeValue("name", "");
+                        string type = input.GetAttributeValue("type", "").ToLower();
+                        string value = input.GetAttributeValue("value", "");
+
+                        // 自動收集隱藏欄位與預設值 (排除掉我們自己要填的欄位與按鈕)
+                        if (!string.IsNullOrEmpty(name) && name != "login" && name != "passwd" && type != "submit" && type != "button")
+                        {
+                            formData.Add(new KeyValuePair<string, string>(name, value));
+                        }
+                    }
+                }
+
+                // 放入我們設定的帳號與密碼
+                formData.Add(new KeyValuePair<string, string>("login", username));
+                formData.Add(new KeyValuePair<string, string>("passwd", password));
+
+                var content = new FormUrlEncodedContent(formData);
 
                 HttpResponseMessage response = await client.PostAsync(loginUrl, content);
                 response.EnsureSuccessStatusCode();
