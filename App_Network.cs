@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，具備全表單攔截、代理伺服器穿透、以及實體檔案(PDF)下載功能。
+ * 檔案功能：處理 HTTP 網路請求，優化「已登入判斷」邏輯，避免重複登入被伺服器阻擋。
  * 對應選單名稱：網路連線
  */
 using System;
@@ -22,7 +22,6 @@ namespace FormCrawlerApp
         {
             cookieContainer = new CookieContainer();
             
-            // 系統代理伺服器穿透 (解決 407 Proxy 錯誤)
             IWebProxy systemProxy = WebRequest.GetSystemWebProxy();
             systemProxy.Credentials = CredentialCache.DefaultCredentials;
 
@@ -45,14 +44,12 @@ namespace FormCrawlerApp
             client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
         }
 
-        // 安全讀取網頁內容，避免伺服器回傳「無效字元集」導致程式崩潰
         private async Task<string> SafeReadAsStringAsync(HttpResponseMessage response)
         {
             byte[] bytes = await response.Content.ReadAsByteArrayAsync();
             return Encoding.UTF8.GetString(bytes);
         }
 
-        // 執行背景登入 (具備自動判斷機制與隱藏欄位抓取)
         public async Task<bool> LoginAsync(string username, string password)
         {
             try
@@ -65,7 +62,24 @@ namespace FormCrawlerApp
                     currentLoginUrl = "http://192.168.1.83/eipplus/login.php"; 
                 }
 
-                // 加入 Origin 與 Referer，滿足老舊系統的防偽造檢查
+                // 【關鍵修正】：改變「是否已登入」的判斷方式
+                // 我們直接去摸一下「你要爬蟲的第一個目標網址」。
+                // 這樣就不會被 login.php 騙，避免重複登入被伺服器阻擋！
+                string testUrl = settings.CrawlUrls.Count > 0 ? settings.CrawlUrls[0] : currentLoginUrl.Replace("login.php", "index.php");
+                
+                HttpResponseMessage testResponse = await client.GetAsync(testUrl);
+                string testContent = await SafeReadAsStringAsync(testResponse);
+
+                // 如果目標網頁裡面「沒有」登入表單，代表我們現在其實是登入成功的狀態，直接接續爬蟲！
+                if (!testContent.Contains("loginfrm") && !testContent.Contains("passwd"))
+                {
+                    return true; 
+                }
+
+                // ==========================================
+                // 如果真的沒有登入，才正式開始執行登入流程
+                // ==========================================
+
                 Uri loginUri = new Uri(currentLoginUrl);
                 string origin = $"{loginUri.Scheme}://{loginUri.Host}";
                 if (client.DefaultRequestHeaders.Contains("Origin")) client.DefaultRequestHeaders.Remove("Origin");
@@ -73,16 +87,9 @@ namespace FormCrawlerApp
                 client.DefaultRequestHeaders.Add("Origin", origin);
                 client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
 
-                // 【第一階段：獲取登入頁面】
                 HttpResponseMessage checkResponse = await client.GetAsync(currentLoginUrl);
                 string checkContent = await SafeReadAsStringAsync(checkResponse);
 
-                if (!checkContent.Contains("loginfrm") && !checkContent.Contains("passwd"))
-                {
-                    return true; // 已經登入，不需再送出
-                }
-
-                // 【第二階段：精準模擬表單送出】
                 HtmlDocument doc = new HtmlDocument();
                 doc.LoadHtml(checkContent);
 
@@ -101,7 +108,6 @@ namespace FormCrawlerApp
 
                 var formDict = new Dictionary<string, string>();
 
-                // 1. 抓取所有 <input> (包含隱藏的 Token)
                 var inputs = formNode?.SelectNodes(".//input") ?? doc.DocumentNode.SelectNodes("//input");
                 if (inputs != null)
                 {
@@ -116,7 +122,6 @@ namespace FormCrawlerApp
                     }
                 }
 
-                // 2. 抓取所有 <select> (下拉選單，如語系、網域等)
                 var selects = formNode?.SelectNodes(".//select") ?? doc.DocumentNode.SelectNodes("//select");
                 if (selects != null)
                 {
@@ -131,7 +136,6 @@ namespace FormCrawlerApp
                     }
                 }
 
-                // 覆寫帳號與密碼
                 formDict["login"] = username;
                 formDict["passwd"] = password;
 
@@ -142,8 +146,6 @@ namespace FormCrawlerApp
                 }
 
                 var content = new FormUrlEncodedContent(formData);
-                
-                // 【老舊系統殺手鐧】強制移除 Content-Type 的 charset=utf-8 後綴
                 content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-www-form-urlencoded");
 
                 HttpResponseMessage response = await client.PostAsync(postTargetUrl, content);
@@ -151,10 +153,8 @@ namespace FormCrawlerApp
 
                 string responseContent = await SafeReadAsStringAsync(response);
 
-                // 驗證是否登入成功
                 if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
                 {
-                    // 【除錯神器】把伺服器拒絕登入的畫面存下來
                     System.IO.File.WriteAllText("LoginError_Debug.html", responseContent, Encoding.UTF8);
                     throw new Exception("伺服器拒絕了登入請求！\n已將伺服器回傳的畫面存入程式所在資料夾下的 [LoginError_Debug.html]。\n請雙擊打開該檔案，看看伺服器顯示了什麼錯誤訊息。");
                 }
@@ -167,7 +167,6 @@ namespace FormCrawlerApp
             }
         }
 
-        // 抓取指定網址的 HTML 原始碼 (帶有登入後的 Cookie 狀態)
         public async Task<string> GetHtmlAsync(string url)
         {
             try
@@ -185,19 +184,16 @@ namespace FormCrawlerApp
             }
         }
 
-        // 【新增功能】下載檔案並儲存至本機
         public async Task DownloadFileAsync(string url, string savePath)
         {
             try
             {
-                // 維持登入狀態與來源驗證，防止被踢出
                 if (client.DefaultRequestHeaders.Contains("Referer")) client.DefaultRequestHeaders.Remove("Referer");
                 client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
 
                 HttpResponseMessage response = await client.GetAsync(url);
                 response.EnsureSuccessStatusCode(); 
                 
-                // 直接讀取原始位元組並存成實體檔案
                 byte[] fileBytes = await response.Content.ReadAsByteArrayAsync();
                 System.IO.File.WriteAllBytes(savePath, fileBytes);
             }
