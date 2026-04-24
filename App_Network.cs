@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，具備「智慧判斷登入狀態」功能，並維護 Session。
+ * 檔案功能：處理 HTTP 網路請求，具備「智慧判斷登入狀態」功能，並維護 Session，修正伺服器無效字元集報錯。
  * 對應選單名稱：網路連線
  * 對應資料庫名稱：無
  * 對應資料表名稱：無
@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace FormCrawlerApp
@@ -31,12 +32,21 @@ namespace FormCrawlerApp
             client.Timeout = TimeSpan.FromSeconds(30);
         }
 
+        // 💡 【關鍵修正】安全讀取網頁內容，避免伺服器回傳無效字元集導致程式崩潰
+        private async Task<string> SafeReadAsStringAsync(HttpResponseMessage response)
+        {
+            // 改用讀取 Byte 陣列的方式，直接略過 HttpClient 對 Header 字元集的嚴格驗證
+            byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+            
+            // 根據你之前提供的 HTML 原始碼，該系統實際上使用的是 UTF-8 編碼，我們直接手動解碼
+            return Encoding.UTF8.GetString(bytes);
+        }
+
         // 執行背景登入 (具備自動判斷機制)
         public async Task<bool> LoginAsync(string username, string password)
         {
             try
             {
-                // 動態讀取設定檔中的登入網址
                 App_Settings settings = new App_Settings();
                 string loginUrl = settings.LoginUrl;
 
@@ -46,19 +56,17 @@ namespace FormCrawlerApp
                 }
 
                 // 【第一階段：檢查是否已登入】
-                // 先對登入網址發送 GET 請求，抓取目前的網頁原始碼
                 HttpResponseMessage checkResponse = await client.GetAsync(loginUrl);
-                string checkContent = await checkResponse.Content.ReadAsStringAsync();
+                
+                // 替換為安全讀取方法
+                string checkContent = await SafeReadAsStringAsync(checkResponse);
 
-                // 根據網頁原始碼，登入畫面會有 name="loginfrm" 或 name="passwd"
-                // 如果沒有這些特徵，代表已經在登入狀態 (沒看到登入畫面)，直接回傳 true 開始爬蟲
                 if (!checkContent.Contains("loginfrm") && !checkContent.Contains("passwd"))
                 {
                     return true; 
                 }
 
                 // 【第二階段：執行登入】
-                // 如果畫面上確實有登入表單，才設定 POST 參數送出帳密
                 var content = new FormUrlEncodedContent(new[]
                 {
                     new KeyValuePair<string, string>("login", username),
@@ -68,9 +76,9 @@ namespace FormCrawlerApp
                 HttpResponseMessage response = await client.PostAsync(loginUrl, content);
                 response.EnsureSuccessStatusCode();
 
-                string responseContent = await response.Content.ReadAsStringAsync();
+                // 替換為安全讀取方法
+                string responseContent = await SafeReadAsStringAsync(response);
 
-                // 再次驗證：如果登入後的回應內容仍包含登入表單，通常代表帳密錯誤
                 if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
                 {
                     return false;
@@ -90,9 +98,10 @@ namespace FormCrawlerApp
             try
             {
                 HttpResponseMessage response = await client.GetAsync(url);
-                response.EnsureSuccessStatusCode(); // 確保 HTTP 狀態碼為 200 OK
+                response.EnsureSuccessStatusCode(); 
                 
-                return await response.Content.ReadAsStringAsync();
+                // 替換為安全讀取方法
+                return await SafeReadAsStringAsync(response);
             }
             catch (Exception ex)
             {
