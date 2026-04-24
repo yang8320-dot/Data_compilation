@@ -111,7 +111,7 @@ namespace FormCrawlerApp
                 if (!Directory.Exists(exportDir)) Directory.CreateDirectory(exportDir);
 
                 string[] targetKeywords = new string[] {
-                    "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文", "彰濱廠虛驚事件", "輕度傷害記錄表"
+                    "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文", "彰濱廠虛驚事件輕度傷害記錄表"
                 };
 
                 Dictionary<string, List<string[]>> categorizedData = new Dictionary<string, List<string[]>>();
