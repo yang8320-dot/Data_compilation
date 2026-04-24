@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗，支援動態存檔路徑判斷與開啟。
+ * 檔案功能：應用程式主視窗，新增資料分類拆檔與多檔案匯出邏輯。
  * 對應選單名稱：主選單
  */
 using System;
@@ -30,15 +30,9 @@ namespace FormCrawlerApp
             InitializeUI();
         }
 
-        // 💡 新增：取得最終的存檔資料夾路徑
         private string GetExportPath()
         {
-            // 如果使用者有在設定中指定路徑，且路徑有效，則使用自訂路徑
-            if (!string.IsNullOrWhiteSpace(settings.ExportPath))
-            {
-                return settings.ExportPath;
-            }
-            // 否則預設使用「程式執行檔所在的資料夾」
+            if (!string.IsNullOrWhiteSpace(settings.ExportPath)) return settings.ExportPath;
             return Application.StartupPath;
         }
 
@@ -53,12 +47,8 @@ namespace FormCrawlerApp
             Panel menuPanel = new Panel { Dock = DockStyle.Top, Height = 70, BackColor = Color.LightSteelBlue };
             btnSettings = new Button { Text = "⚙️ 系統與路徑設定", Location = new Point(15, 15), Size = new Size(180, 40), Cursor = Cursors.Hand };
             btnSettings.Click += (s, e) => {
-                // 開啟設定後，重新載入設定檔以更新路徑
-                if (new SettingsForm(settings).ShowDialog() == DialogResult.OK) {
-                    settings.Load(); 
-                }
+                if (new SettingsForm(settings).ShowDialog() == DialogResult.OK) { settings.Load(); }
             };
-            
             menuPanel.Controls.Add(btnSettings);
 
             btnExecute = new Button { Text = "🚀 執行登入並批次匯入", Location = new Point(30, 100), Size = new Size(250, 60), Font = new Font("Microsoft JhengHei", 12F, FontStyle.Bold), BackColor = Color.PaleGreen, Cursor = Cursors.Hand };
@@ -67,34 +57,23 @@ namespace FormCrawlerApp
             btnOpenFolder = new Button { Text = "📁 開啟下載資料夾", Location = new Point(300, 100), Size = new Size(200, 60), Cursor = Cursors.Hand };
             btnOpenFolder.Click += (s, e) => {
                 string currentPath = GetExportPath();
-                if (Directory.Exists(currentPath)) {
-                    Process.Start("explorer.exe", currentPath);
-                } else {
-                    MessageBox.Show($"資料夾不存在！\n路徑：{currentPath}", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                if (Directory.Exists(currentPath)) Process.Start("explorer.exe", currentPath);
+                else MessageBox.Show($"資料夾不存在！\n路徑：{currentPath}", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             };
 
             lblStatus = new Label { 
                 Text = "系統就緒。請確認網址清單與存檔路徑後執行。", 
-                Location = new Point(30, 200), 
-                Size = new Size(700, 150), 
-                AutoSize = false, 
-                ForeColor = Color.DarkSlateGray,
-                Font = new Font("Microsoft JhengHei", 11F)
+                Location = new Point(30, 200), Size = new Size(700, 150), AutoSize = false, 
+                ForeColor = Color.DarkSlateGray, Font = new Font("Microsoft JhengHei", 11F)
             };
 
-            this.Controls.Add(btnExecute);
-            this.Controls.Add(btnOpenFolder);
-            this.Controls.Add(lblStatus);
-            this.Controls.Add(menuPanel);
+            this.Controls.Add(btnExecute); this.Controls.Add(btnOpenFolder);
+            this.Controls.Add(lblStatus); this.Controls.Add(menuPanel);
         }
 
         private async void BtnExecute_Click(object sender, EventArgs e)
         {
-            if (settings.CrawlUrls.Count == 0) {
-                MessageBox.Show("請先在設定中輸入爬蟲網址清單。");
-                return;
-            }
+            if (settings.CrawlUrls.Count == 0) { MessageBox.Show("請先設定爬蟲網址清單。"); return; }
 
             try {
                 UIState(false, "系統連線中：正在自動檢查登入狀態...");
@@ -116,33 +95,61 @@ namespace FormCrawlerApp
                     if (i < settings.CrawlUrls.Count - 1)
                     {
                         int waitTime = rnd.Next(2000, 4001); 
-                        UIState(false, $"第 {i + 1} 頁抓取成功！\n為模擬人工操作，隨機等待 {waitTime / 1000.0:F1} 秒...");
+                        UIState(false, $"第 {i + 1} 頁成功！隨機等待 {waitTime / 1000.0:F1} 秒...");
                         await Task.Delay(waitTime);
                     }
                 }
 
-                // 取得最終存檔目錄並確保資料夾存在
                 string exportDir = GetExportPath();
                 if (!Directory.Exists(exportDir)) Directory.CreateDirectory(exportDir);
-                
-                string fileName = Path.Combine(exportDir, $"批次匯出_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
 
-                UIState(false, "網頁抓取完畢，正在生成 Excel 檔案...");
-                await excelExporter.ExportAsync(fileName, allData);
+                UIState(false, "網頁抓取完畢，正在依照分類拆分為多個 Excel 檔案...");
+
+                // 【需求 4】定義 6 個要抓取的關鍵字
+                string[] targetKeywords = new string[] {
+                    "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文", "彰濱廠虛驚事件", "輕度傷害記錄表"
+                };
+
+                // 準備分類容器
+                Dictionary<string, List<string[]>> categorizedData = new Dictionary<string, List<string[]>>();
+                categorizedData["未分類其他表單"] = new List<string[]>(); // 裝沒對應到的表單
+                foreach (var kw in targetKeywords) categorizedData[kw] = new List<string[]>();
+
+                // 掃描每一筆資料並分類
+                foreach (var row in allData) {
+                    string formNo = row[0];
+                    string subject = row[1];
+                    bool matched = false;
+                    
+                    // 只要單號或主題包含關鍵字，就放入該分類
+                    foreach (var kw in targetKeywords) {
+                        if (formNo.Contains(kw) || subject.Contains(kw)) {
+                            categorizedData[kw].Add(row);
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) categorizedData["未分類其他表單"].Add(row);
+                }
+
+                // 針對有資料的分類，個別匯出 Excel 檔
+                int fileCount = 0;
+                foreach (var kvp in categorizedData) {
+                    if (kvp.Value.Count > 0) {
+                        string fileName = Path.Combine(exportDir, $"{kvp.Key}_匯出_{DateTime.Now:yyyyMMdd_HHmm}.xlsx");
+                        await excelExporter.ExportAsync(fileName, kvp.Value);
+                        fileCount++;
+                    }
+                }
                 
-                UIState(true, $"✅ 作業完成！\n共成功匯出 {allData.Count} 筆資料至 Excel。\n檔案已存於：{fileName}");
+                UIState(true, $"✅ 作業完成！\n總共抓取 {allData.Count} 筆資料。\n已自動拆分成 {fileCount} 個 Excel 檔案！\n請點擊「開啟下載資料夾」查看成果。");
             }
             catch (Exception ex) { UIState(true, $"❌ 發生錯誤：\n{ex.Message}"); }
         }
 
         private void UIState(bool enable, string msg) {
-            if (this.InvokeRequired) {
-                this.Invoke(new Action(() => UIState(enable, msg)));
-                return;
-            }
-            btnExecute.Enabled = enable;
-            btnSettings.Enabled = enable;
-            lblStatus.Text = msg;
+            if (this.InvokeRequired) { this.Invoke(new Action(() => UIState(enable, msg))); return; }
+            btnExecute.Enabled = enable; btnSettings.Enabled = enable; lblStatus.Text = msg;
         }
     }
 }
