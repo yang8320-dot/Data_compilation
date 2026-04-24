@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，具備智慧判斷登入、維護 Session，並支援企業 Proxy 代理伺服器自動授權 (解決 407 錯誤)。
+ * 檔案功能：處理 HTTP 請求、自動判斷登入狀態、解決字元集無效報錯。
  * 對應選單名稱：網路連線
  */
 using System;
@@ -19,19 +19,11 @@ namespace FormCrawlerApp
         public App_Network()
         {
             cookieContainer = new CookieContainer();
-            
-            // 【關鍵修正 1】自動抓取 Windows 系統預設的 Proxy 設定，並賦予當前使用者的網域通行權限
-            IWebProxy systemProxy = WebRequest.GetSystemWebProxy();
-            systemProxy.Credentials = CredentialCache.DefaultCredentials;
-
             HttpClientHandler handler = new HttpClientHandler
             {
                 CookieContainer = cookieContainer,
-                UseCookies = true,
-                UseProxy = true,
-                Proxy = systemProxy // 套用 Proxy 授權，穿透企業防火牆
+                UseCookies = true
             };
-            
             client = new HttpClient(handler);
             client.Timeout = TimeSpan.FromSeconds(30);
         }
@@ -49,19 +41,19 @@ namespace FormCrawlerApp
                 App_Settings settings = new App_Settings();
                 string loginUrl = settings.LoginUrl;
 
-                if (string.IsNullOrWhiteSpace(loginUrl))
-                {
-                    loginUrl = "http://192.168.1.83/eipplus/login.php"; 
-                }
+                if (string.IsNullOrWhiteSpace(loginUrl)) loginUrl = "http://192.168.1.83/eipplus/login.php";
 
+                // 💡 智慧檢查：先看目前是否已經登入
                 HttpResponseMessage checkResponse = await client.GetAsync(loginUrl);
                 string checkContent = await SafeReadAsStringAsync(checkResponse);
 
-                if (!checkContent.Contains("loginfrm") && !checkContent.Contains("passwd"))
+                // 如果畫面上沒有 login 或 passwd 輸入框，代表 Session 仍在，不需登入
+                if (!checkContent.Contains("name=\"login\"") && !checkContent.Contains("name=\"passwd\""))
                 {
                     return true; 
                 }
 
+                // 執行登入 POST
                 var content = new FormUrlEncodedContent(new[]
                 {
                     new KeyValuePair<string, string>("login", username),
@@ -73,6 +65,7 @@ namespace FormCrawlerApp
 
                 string responseContent = await SafeReadAsStringAsync(response);
 
+                // 💡 判斷登入失敗：如果回應內容還留在登入頁面
                 if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
                 {
                     return false;
@@ -82,24 +75,15 @@ namespace FormCrawlerApp
             }
             catch (Exception ex)
             {
-                // 若仍有錯誤，將原始錯誤訊息拋出，以便在介面上顯示
-                throw new Exception("連線失敗：" + ex.Message);
+                throw new Exception("網路連線發生異常，請檢查內網環境或網址。" + ex.Message);
             }
         }
 
         public async Task<string> GetHtmlAsync(string url)
         {
-            try
-            {
-                HttpResponseMessage response = await client.GetAsync(url);
-                response.EnsureSuccessStatusCode(); 
-                
-                return await SafeReadAsStringAsync(response);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"抓取網頁失敗 ({url})：" + ex.Message);
-            }
+            HttpResponseMessage response = await client.GetAsync(url);
+            response.EnsureSuccessStatusCode(); 
+            return await SafeReadAsStringAsync(response);
         }
     }
 }
