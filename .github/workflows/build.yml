@@ -1,6 +1,5 @@
-name: 自動打包單一執行檔 (Build EXE)
+name: 自動打包免安裝單一執行檔
 
-# 限定手動點擊執行
 on:
   workflow_dispatch:
 
@@ -12,31 +11,26 @@ jobs:
     - name: 下載原始碼
       uses: actions/checkout@v4
 
-    - name: 設定 MSBuild 環境
-      uses: microsoft/setup-msbuild@v2
+    - name: 設定現代化 .NET SDK 環境
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x' # 支援編譯 .NET 4.7.2
 
-    - name: 設定 NuGet 環境
-      uses: NuGet/setup-nuget@v2
-
-    - name: 自動還原缺少的套件 (包含 HtmlAgilityPack)
+    - name: 自動還原套件並打包所有元件庫
       run: |
-        $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
-        if ($sln) {
-            Write-Host "找到方案檔：$($sln.FullName)"
-            nuget restore $sln.FullName
+        # 尋找專案檔
+        $csproj = Get-ChildItem -Filter *.csproj -Recurse | Select-Object -First 1
+        if ($csproj) {
+            Write-Host "找到專案檔：$($csproj.FullName)"
+            # dotnet build 會自動處理 NuGet 還原，並觸發 Costura.Fody 內嵌 DLL
+            dotnet build $csproj.FullName -c Release
         } else {
-            Write-Error "找不到方案檔 (.sln)！請確認檔案已上傳。"
+            Write-Error "找不到專案檔 (.csproj)！"
             exit 1
         }
       shell: pwsh
 
-    - name: 執行 Release 編譯
-      run: |
-        $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
-        msbuild $sln.FullName /p:Configuration=Release /p:Platform="Any CPU"
-      shell: pwsh
-
-    - name: 尋找打包好的 .exe 執行檔
+    - name: 尋找並提取免安裝 .exe 檔案
       run: |
         $exe = Get-ChildItem -Filter *.exe -Recurse | Where-Object { $_.DirectoryName -match "bin\\Release" -and $_.Name -notmatch "vshost" } | Select-Object -First 1
         if ($exe) {
@@ -48,7 +42,7 @@ jobs:
         }
       shell: pwsh
 
-    - name: 將 .exe 上傳至 Actions 頁面供下載
+    - name: 將免安裝執行檔上傳供下載
       uses: actions/upload-artifact@v4
       with:
         name: FormCrawlerApp-Portable-EXE
