@@ -1,8 +1,6 @@
 /*
- * 檔案功能：解析 HTML 內容，抓取表格內容與超連結 (防彈級解析，支援自動偵測欄位位移)。
+ * 檔案功能：解析 HTML 內容，支援動態欄位數量偵測 (解決索引超出範圍錯誤)。
  * 對應選單名稱：網頁爬蟲
- * 對應資料庫名稱：無
- * 對應資料表名稱：無
  */
 using HtmlAgilityPack;
 using System;
@@ -13,15 +11,12 @@ namespace FormCrawlerApp
 {
     public class App_Crawler
     {
-        // 💡 新增：處理直接傳入的 HTML 字串 (批次爬蟲專用)
         public async Task<List<string[]>> ParseHtmlContentAsync(string htmlContent)
         {
             return await Task.Run(() =>
             {
                 List<string[]> extractedData = new List<string[]>();
                 HtmlDocument doc = new HtmlDocument();
-                
-                // 注意這裡改為 LoadHtml 來解析純文字字串，而不是讀取實體檔案
                 doc.LoadHtml(htmlContent);
 
                 HtmlNodeCollection rows = doc.DocumentNode.SelectNodes("//tr");
@@ -32,39 +27,57 @@ namespace FormCrawlerApp
                     try 
                     {
                         HtmlNodeCollection cells = row.SelectNodes("./td");
-                        if (cells == null || cells.Count < 5) continue; // 小於 5 欄絕對不是我們要的資料
+                        if (cells == null || cells.Count < 5) continue; 
 
-                        // 自動偵測偏移量：判斷第一欄是否為 Checkbox
                         int offset = 0;
                         if (cells[0].InnerHtml.ToLower().Contains("checkbox"))
                         {
-                            offset = 1; // 如果第一欄是 Checkbox，資料欄位往後延遲一格
+                            offset = 1; 
                         }
 
-                        // 確保扣除偏移量後，仍有足夠的 8 個欄位可抓取
-                        if (cells.Count < offset + 8) continue;
+                        if (cells.Count < offset + 5) continue;
 
                         string no = CleanText(cells[offset + 0].InnerText);
                         string formNo = CleanText(cells[offset + 1].InnerText);
 
-                        // 嚴格過濾：單號通常要有一定長度，若無則跳過 (防抓到表頭或空行)
                         if (string.IsNullOrEmpty(formNo) || formNo.Length < 5) continue;
 
                         string applyDate = CleanText(cells[offset + 2].InnerText);
                         string applicant = CleanText(cells[offset + 3].InnerText);
                         string subject = CleanText(cells[offset + 4].InnerText);
-                        string stepName = CleanText(cells[offset + 5].InnerText);
-                        string status = CleanText(cells[offset + 6].InnerText);
-                        string processTime = CleanText(cells[offset + 7].InnerText);
+                        
+                        // 【關鍵修正 2】動態判斷欄位數量，適應有/無「步驟名稱」的網頁
+                        string stepName = "";
+                        string status = "";
+                        string processTime = "";
+
+                        if (cells.Count >= offset + 8) 
+                        {
+                            // 9個欄位：包含步驟名稱
+                            stepName = CleanText(cells[offset + 5].InnerText);
+                            status = CleanText(cells[offset + 6].InnerText);
+                            processTime = CleanText(cells[offset + 7].InnerText);
+                        }
+                        else if (cells.Count == offset + 7)
+                        {
+                            // 8個欄位：缺少步驟名稱，自動將對應欄位留空
+                            status = CleanText(cells[offset + 5].InnerText);
+                            processTime = CleanText(cells[offset + 6].InnerText);
+                        }
 
                         string link = "";
                         HtmlNode linkNode = row.SelectSingleNode(".//a[@href]");
                         if (linkNode != null)
                         {
                             link = linkNode.GetAttributeValue("href", "");
-                            if (!link.StartsWith("http"))
+                            if (!link.StartsWith("http") && !link.StartsWith("javascript"))
                             {
                                 link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
+                            }
+                            else if (link.StartsWith("javascript")) 
+                            {
+                                // 過濾掉 JavaScript 超連結，防止 Excel 產生無效點擊錯誤
+                                link = ""; 
                             }
                         }
 
@@ -72,7 +85,6 @@ namespace FormCrawlerApp
                     }
                     catch 
                     {
-                        // 若單一列發生任何不可預期錯誤直接跳過，絕不讓程式崩潰
                         continue; 
                     }
                 }
@@ -81,18 +93,16 @@ namespace FormCrawlerApp
             });
         }
 
-        // 保留原本讀取本機檔案的方法，維持相容性
         public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
         {
             return await Task.Run(() =>
             {
                 HtmlDocument doc = new HtmlDocument();
-                doc.Load(htmlFilePath, System.Text.Encoding.UTF8); // 讀取實體檔案
-                return ParseHtmlContentAsync(doc.DocumentNode.OuterHtml).Result; // 直接呼叫新方法進行共用解析
+                doc.Load(htmlFilePath, System.Text.Encoding.UTF8);
+                return ParseHtmlContentAsync(doc.DocumentNode.OuterHtml).Result;
             });
         }
 
-        // 輔助方法：清除 HTML 特殊字元與換行符號
         private string CleanText(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return "";
