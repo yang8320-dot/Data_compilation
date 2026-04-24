@@ -1,6 +1,3 @@
-/*
- * 檔案功能：解析 HTML 內容，支援日期強制轉換為「年/月/日」格式。
- */
 using HtmlAgilityPack;
 using System;
 using System.Collections.Generic;
@@ -37,7 +34,6 @@ namespace FormCrawlerApp
                         }
 
                         string combinedText = string.Join("", cellTexts);
-                        // 過濾掉包含標題列的資料行
                         if (combinedText.Contains("表單單號") || combinedText.Contains("存檔時間")) continue;
 
                         string formNo = cellTexts.Count > 0 ? cellTexts[0] : "";
@@ -47,8 +43,6 @@ namespace FormCrawlerApp
                         string applicant = cellTexts.Count > 5 ? cellTexts[5] : "";
                         string handler = cellTexts.Count > 6 ? cellTexts[6] : "";
                         string currentProcessor = cellTexts.Count > 7 ? cellTexts[7] : "";
-                        
-                        // 強制將時間轉換為 YYYY/MM/DD
                         string applyTime = cellTexts.Count > 8 ? FormatToDateOnly(cellTexts[8]) : "";
 
                         if (string.IsNullOrEmpty(formNo) && string.IsNullOrEmpty(subject)) continue;
@@ -63,10 +57,8 @@ namespace FormCrawlerApp
                             else if (link.StartsWith("javascript")) 
                                 link = "";
                             
-                            // 修正雙重 eipplus 的網址問題
+                            [span_1](start_span)// 修正雙重路徑並更換為列印模式網址[span_1](end_span)
                             link = link.Replace("/eipplus/eipplus/", "/eipplus/");
-                            
-                            // 【修改點】將網址的 view_formsflow 取代為列印模式的 print_frameset
                             link = link.Replace("view_formsflow", "print_frameset");
                         }
 
@@ -78,7 +70,6 @@ namespace FormCrawlerApp
             });
         }
 
-        // 輔助方法：強制將日期字串轉換為「年/月/日」
         private string FormatToDateOnly(string datetimeStr)
         {
             if (string.IsNullOrWhiteSpace(datetimeStr)) return "";
@@ -86,10 +77,8 @@ namespace FormCrawlerApp
             {
                 return dt.ToString("yyyy/MM/dd");
             }
-            
             var parts = datetimeStr.Split(' ');
             if (parts.Length > 0 && parts[0].Contains("/")) return parts[0];
-            
             return datetimeStr;
         }
 
