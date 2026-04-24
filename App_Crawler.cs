@@ -1,5 +1,5 @@
 /*
- * 檔案功能：解析 HTML 內容，支援動態欄位數量偵測 (解決索引超出範圍錯誤)。
+ * 檔案功能：解析 HTML 內容，加入「安全讀取機制」，徹底避免陣列越界錯誤。
  * 對應選單名稱：網頁爬蟲
  */
 using HtmlAgilityPack;
@@ -35,34 +35,32 @@ namespace FormCrawlerApp
                             offset = 1; 
                         }
 
-                        if (cells.Count < offset + 5) continue;
-
-                        string no = CleanText(cells[offset + 0].InnerText);
-                        string formNo = CleanText(cells[offset + 1].InnerText);
+                        // 使用 SafeGetText 安全讀取，不用再擔心欄位數量不夠
+                        string no = SafeGetText(cells, offset + 0);
+                        string formNo = SafeGetText(cells, offset + 1);
 
                         if (string.IsNullOrEmpty(formNo) || formNo.Length < 5) continue;
 
-                        string applyDate = CleanText(cells[offset + 2].InnerText);
-                        string applicant = CleanText(cells[offset + 3].InnerText);
-                        string subject = CleanText(cells[offset + 4].InnerText);
+                        string applyDate = SafeGetText(cells, offset + 2);
+                        string applicant = SafeGetText(cells, offset + 3);
+                        string subject = SafeGetText(cells, offset + 4);
                         
-                        // 【關鍵修正 2】動態判斷欄位數量，適應有/無「步驟名稱」的網頁
                         string stepName = "";
                         string status = "";
                         string processTime = "";
 
+                        // 智慧判斷：如果欄位足夠多，代表有「步驟名稱」
                         if (cells.Count >= offset + 8) 
                         {
-                            // 9個欄位：包含步驟名稱
-                            stepName = CleanText(cells[offset + 5].InnerText);
-                            status = CleanText(cells[offset + 6].InnerText);
-                            processTime = CleanText(cells[offset + 7].InnerText);
+                            stepName = SafeGetText(cells, offset + 5);
+                            status = SafeGetText(cells, offset + 6);
+                            processTime = SafeGetText(cells, offset + 7);
                         }
-                        else if (cells.Count == offset + 7)
+                        else 
                         {
-                            // 8個欄位：缺少步驟名稱，自動將對應欄位留空
-                            status = CleanText(cells[offset + 5].InnerText);
-                            processTime = CleanText(cells[offset + 6].InnerText);
+                            // 欄位較少時，代表沒有步驟名稱，直接取後面的狀態與時間
+                            status = SafeGetText(cells, offset + 5);
+                            processTime = SafeGetText(cells, offset + 6);
                         }
 
                         string link = "";
@@ -76,7 +74,6 @@ namespace FormCrawlerApp
                             }
                             else if (link.StartsWith("javascript")) 
                             {
-                                // 過濾掉 JavaScript 超連結，防止 Excel 產生無效點擊錯誤
                                 link = ""; 
                             }
                         }
@@ -103,8 +100,11 @@ namespace FormCrawlerApp
             });
         }
 
-        private string CleanText(string input)
+        // 💡 【新增核心機制】：安全取得陣列內容，只要索引不存在就回傳空白，絕不報錯
+        private string SafeGetText(HtmlNodeCollection cells, int index)
         {
+            if (cells == null || index >= cells.Count) return "";
+            string input = cells[index].InnerText;
             if (string.IsNullOrWhiteSpace(input)) return "";
             return HtmlEntity.DeEntitize(input).Replace("\r", "").Replace("\n", "").Trim();
         }
