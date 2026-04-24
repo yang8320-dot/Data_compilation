@@ -54,8 +54,16 @@ namespace FormCrawlerApp
                         rowIdx++;
                     }
 
-                    // 自動調整欄寬
-                    worksheet.Columns().AdjustToContents();
+                    // 【修改點】設定有資料的列高為 25
+                    worksheet.Rows().Height = 25;
+
+                    // 【修改點】依序設定 1~9 欄的欄寬
+                    double[] colWidths = { 50, 65, 9, 9, 9, 15, 15, 15, 10 };
+                    for (int i = 0; i < colWidths.Length; i++)
+                    {
+                        worksheet.Column(i + 1).Width = colWidths[i];
+                    }
+
                     workbook.SaveAs(filePath);
                 }
             });
