@@ -1,206 +1,111 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，優化「已登入判斷」邏輯，避免重複登入被伺服器阻擋。
- * 對應選單名稱：網路連線
+ * 檔案功能：解析 HTML 內容，支援日期強制轉換為「年/月/日」格式。
  */
+using HtmlAgilityPack;
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
-using HtmlAgilityPack;
 
 namespace FormCrawlerApp
 {
-    public class App_Network
+    public class App_Crawler
     {
-        private readonly HttpClient client;
-        private readonly CookieContainer cookieContainer;
-        private string currentLoginUrl = "";
-
-        public App_Network()
+        public async Task<List<string[]>> ParseHtmlContentAsync(string htmlContent)
         {
-            cookieContainer = new CookieContainer();
-            
-            IWebProxy systemProxy = WebRequest.GetSystemWebProxy();
-            systemProxy.Credentials = CredentialCache.DefaultCredentials;
-
-            HttpClientHandler handler = new HttpClientHandler
+            return await Task.Run(() =>
             {
-                CookieContainer = cookieContainer,
-                UseCookies = true,
-                Proxy = systemProxy,
-                UseProxy = true,
-                UseDefaultCredentials = true 
-            };
-            
-            client = new HttpClient(handler);
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            client.DefaultRequestHeaders.ExpectContinue = false;
-            client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
-            client.DefaultRequestHeaders.Add("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7");
-            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
-        }
-
-        private async Task<string> SafeReadAsStringAsync(HttpResponseMessage response)
-        {
-            byte[] bytes = await response.Content.ReadAsByteArrayAsync();
-            return Encoding.UTF8.GetString(bytes);
-        }
-
-        public async Task<bool> LoginAsync(string username, string password)
-        {
-            try
-            {
-                App_Settings settings = new App_Settings();
-                currentLoginUrl = settings.LoginUrl;
-
-                if (string.IsNullOrWhiteSpace(currentLoginUrl))
-                {
-                    currentLoginUrl = "http://192.168.1.83/eipplus/login.php"; 
-                }
-
-                // 【關鍵修正】：改變「是否已登入」的判斷方式
-                // 我們直接去摸一下「你要爬蟲的第一個目標網址」。
-                // 這樣就不會被 login.php 騙，避免重複登入被伺服器阻擋！
-                string testUrl = settings.CrawlUrls.Count > 0 ? settings.CrawlUrls[0] : currentLoginUrl.Replace("login.php", "index.php");
-                
-                HttpResponseMessage testResponse = await client.GetAsync(testUrl);
-                string testContent = await SafeReadAsStringAsync(testResponse);
-
-                // 如果目標網頁裡面「沒有」登入表單，代表我們現在其實是登入成功的狀態，直接接續爬蟲！
-                if (!testContent.Contains("loginfrm") && !testContent.Contains("passwd"))
-                {
-                    return true; 
-                }
-
-                // ==========================================
-                // 如果真的沒有登入，才正式開始執行登入流程
-                // ==========================================
-
-                Uri loginUri = new Uri(currentLoginUrl);
-                string origin = $"{loginUri.Scheme}://{loginUri.Host}";
-                if (client.DefaultRequestHeaders.Contains("Origin")) client.DefaultRequestHeaders.Remove("Origin");
-                if (client.DefaultRequestHeaders.Contains("Referer")) client.DefaultRequestHeaders.Remove("Referer");
-                client.DefaultRequestHeaders.Add("Origin", origin);
-                client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
-
-                HttpResponseMessage checkResponse = await client.GetAsync(currentLoginUrl);
-                string checkContent = await SafeReadAsStringAsync(checkResponse);
-
+                List<string[]> extractedData = new List<string[]>();
                 HtmlDocument doc = new HtmlDocument();
-                doc.LoadHtml(checkContent);
+                doc.LoadHtml(htmlContent);
 
-                string postTargetUrl = currentLoginUrl;
-                HtmlNode formNode = doc.DocumentNode.SelectSingleNode("//form[@name='loginfrm']") ?? doc.DocumentNode.SelectSingleNode("//form");
-                
-                if (formNode != null)
+                HtmlNodeCollection rows = doc.DocumentNode.SelectNodes("//tr");
+                if (rows == null) return extractedData;
+
+                foreach (HtmlNode row in rows)
                 {
-                    string action = formNode.GetAttributeValue("action", "");
-                    if (!string.IsNullOrWhiteSpace(action))
+                    try 
                     {
-                        if (action.StartsWith("http")) postTargetUrl = action;
-                        else postTargetUrl = new Uri(loginUri, action).ToString();
-                    }
-                }
+                        HtmlNodeCollection cells = row.SelectNodes("./td");
+                        if (cells == null || cells.Count < 5) continue; 
 
-                var formDict = new Dictionary<string, string>();
+                        int offset = 0;
+                        if (cells[0].InnerHtml.ToLower().Contains("checkbox")) offset = 1; 
 
-                var inputs = formNode?.SelectNodes(".//input") ?? doc.DocumentNode.SelectNodes("//input");
-                if (inputs != null)
-                {
-                    foreach (var input in inputs)
-                    {
-                        string name = input.GetAttributeValue("name", "");
-                        string value = input.GetAttributeValue("value", "");
-                        if (!string.IsNullOrEmpty(name) && input.GetAttributeValue("type", "").ToLower() != "button")
-                        {
-                            formDict[name] = value;
+                        List<string> cellTexts = new List<string>();
+                        for (int i = offset; i < cells.Count; i++) {
+                            cellTexts.Add(CleanText(cells[i].InnerText));
                         }
-                    }
-                }
 
-                var selects = formNode?.SelectNodes(".//select") ?? doc.DocumentNode.SelectNodes("//select");
-                if (selects != null)
-                {
-                    foreach (var sel in selects)
-                    {
-                        string name = sel.GetAttributeValue("name", "");
-                        var selectedOption = sel.SelectSingleNode(".//option[@selected]") ?? sel.SelectSingleNode(".//option");
-                        if (selectedOption != null && !string.IsNullOrEmpty(name))
+                        string combinedText = string.Join("", cellTexts);
+                        // 過濾掉包含標題列的資料行
+                        if (combinedText.Contains("表單單號") || combinedText.Contains("存檔時間")) continue;
+
+                        string formNo = cellTexts.Count > 0 ? cellTexts[0] : "";
+                        string subject = cellTexts.Count > 1 ? cellTexts[1] : "";
+                        string status1 = cellTexts.Count > 2 ? cellTexts[2] : ""; 
+                        string status2 = cellTexts.Count > 3 ? cellTexts[3] : ""; 
+                        
+                        string applicant = cellTexts.Count > 5 ? cellTexts[5] : "";
+                        string handler = cellTexts.Count > 6 ? cellTexts[6] : "";
+                        string currentProcessor = cellTexts.Count > 7 ? cellTexts[7] : "";
+                        
+                        // 強制將時間轉換為 YYYY/MM/DD
+                        string applyTime = cellTexts.Count > 8 ? FormatToDateOnly(cellTexts[8]) : "";
+
+                        if (string.IsNullOrEmpty(formNo) && string.IsNullOrEmpty(subject)) continue;
+
+                        string link = "";
+                        HtmlNode linkNode = row.SelectSingleNode(".//a[@href]");
+                        if (linkNode != null)
                         {
-                            formDict[name] = selectedOption.GetAttributeValue("value", selectedOption.InnerText).Trim();
+                            link = linkNode.GetAttributeValue("href", "");
+                            if (!link.StartsWith("http") && !link.StartsWith("javascript"))
+                                link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
+                            else if (link.StartsWith("javascript")) 
+                                link = ""; 
+
+                            // 修正雙重 eipplus 的網址問題
+                            link = link.Replace("/eipplus/eipplus/", "/eipplus/");
                         }
+
+                        extractedData.Add(new string[] { formNo, subject, status1, status2, applicant, handler, currentProcessor, applyTime, link });
                     }
+                    catch { continue; }
                 }
-
-                formDict["login"] = username;
-                formDict["passwd"] = password;
-
-                var formData = new List<KeyValuePair<string, string>>();
-                foreach (var kvp in formDict)
-                {
-                    formData.Add(new KeyValuePair<string, string>(kvp.Key, kvp.Value));
-                }
-
-                var content = new FormUrlEncodedContent(formData);
-                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-www-form-urlencoded");
-
-                HttpResponseMessage response = await client.PostAsync(postTargetUrl, content);
-                response.EnsureSuccessStatusCode();
-
-                string responseContent = await SafeReadAsStringAsync(response);
-
-                if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
-                {
-                    System.IO.File.WriteAllText("LoginError_Debug.html", responseContent, Encoding.UTF8);
-                    throw new Exception("伺服器拒絕了登入請求！\n已將伺服器回傳的畫面存入程式所在資料夾下的 [LoginError_Debug.html]。\n請雙擊打開該檔案，看看伺服器顯示了什麼錯誤訊息。");
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                throw new Exception(ex.Message);
-            }
+                return extractedData;
+            });
         }
 
-        public async Task<string> GetHtmlAsync(string url)
+        // 輔助方法：強制將日期字串轉換為「年/月/日」
+        private string FormatToDateOnly(string datetimeStr)
         {
-            try
+            if (string.IsNullOrWhiteSpace(datetimeStr)) return "";
+            
+            if (DateTime.TryParse(datetimeStr, out DateTime dt))
             {
-                if (client.DefaultRequestHeaders.Contains("Referer")) client.DefaultRequestHeaders.Remove("Referer");
-                client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
-
-                HttpResponseMessage response = await client.GetAsync(url);
-                response.EnsureSuccessStatusCode(); 
-                return await SafeReadAsStringAsync(response);
+                return dt.ToString("yyyy/MM/dd");
             }
-            catch (Exception ex)
-            {
-                throw new Exception($"抓取網頁失敗 ({url})：" + ex.Message);
-            }
+            
+            var parts = datetimeStr.Split(' ');
+            if (parts.Length > 0 && parts[0].Contains("/")) return parts[0];
+            
+            return datetimeStr;
         }
 
-        public async Task DownloadFileAsync(string url, string savePath)
+        public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
         {
-            try
+            return await Task.Run(() =>
             {
-                if (client.DefaultRequestHeaders.Contains("Referer")) client.DefaultRequestHeaders.Remove("Referer");
-                client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
+                HtmlDocument doc = new HtmlDocument();
+                doc.Load(htmlFilePath, System.Text.Encoding.UTF8);
+                return ParseHtmlContentAsync(doc.DocumentNode.OuterHtml).Result;
+            });
+        }
 
-                HttpResponseMessage response = await client.GetAsync(url);
-                response.EnsureSuccessStatusCode(); 
-                
-                byte[] fileBytes = await response.Content.ReadAsByteArrayAsync();
-                System.IO.File.WriteAllBytes(savePath, fileBytes);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"下載檔案失敗 ({url})：" + ex.Message);
-            }
+        private string CleanText(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "";
+            return HtmlEntity.DeEntitize(input).Replace("\r", "").Replace("\n", "").Trim();
         }
     }
 }
