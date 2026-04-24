@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，具備真實瀏覽器偽裝、精準表單攔截與 Proxy 穿透。
+ * 檔案功能：處理 HTTP 網路請求，具備全表單攔截 (包含下拉選單)、老舊伺服器相容性與除錯機制。
  * 對應選單名稱：網路連線
  */
 using System;
@@ -22,7 +22,6 @@ namespace FormCrawlerApp
         {
             cookieContainer = new CookieContainer();
             
-            // 系統代理伺服器穿透
             IWebProxy systemProxy = WebRequest.GetSystemWebProxy();
             systemProxy.Credentials = CredentialCache.DefaultCredentials;
 
@@ -38,13 +37,11 @@ namespace FormCrawlerApp
             client = new HttpClient(handler);
             client.Timeout = TimeSpan.FromSeconds(30);
 
-            // 關閉 100-Continue (某些企業 Proxy 會因為這個 Header 擋住 POST 請求)
             client.DefaultRequestHeaders.ExpectContinue = false;
-
-            // 真實瀏覽器偽裝
             client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
             client.DefaultRequestHeaders.Add("Accept-Language", "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7");
+            client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
         }
 
         private async Task<string> SafeReadAsStringAsync(HttpResponseMessage response)
@@ -65,49 +62,50 @@ namespace FormCrawlerApp
                     currentLoginUrl = "http://192.168.1.83/eipplus/login.php"; 
                 }
 
-                // 加入 Referer (來源網址) 欺騙伺服器我們是在首頁操作的
-                if (client.DefaultRequestHeaders.Contains("Referer"))
-                    client.DefaultRequestHeaders.Remove("Referer");
+                // 加入 Origin 與 Referer，滿足老舊系統的防偽造檢查
+                Uri loginUri = new Uri(currentLoginUrl);
+                string origin = $"{loginUri.Scheme}://{loginUri.Host}";
+                if (client.DefaultRequestHeaders.Contains("Origin")) client.DefaultRequestHeaders.Remove("Origin");
+                if (client.DefaultRequestHeaders.Contains("Referer")) client.DefaultRequestHeaders.Remove("Referer");
+                client.DefaultRequestHeaders.Add("Origin", origin);
                 client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
 
-                // 【第一階段：獲取登入頁面與隱藏欄位】
+                // 【第一階段：獲取登入頁面】
                 HttpResponseMessage checkResponse = await client.GetAsync(currentLoginUrl);
                 string checkContent = await SafeReadAsStringAsync(checkResponse);
 
                 if (!checkContent.Contains("loginfrm") && !checkContent.Contains("passwd"))
                 {
-                    return true; // 已經登入，不需再送出
+                    return true; 
                 }
 
                 // 【第二階段：精準模擬表單送出】
                 HtmlDocument doc = new HtmlDocument();
                 doc.LoadHtml(checkContent);
 
-                // 尋找登入表單的真實目標 Action URL (防呆：有時候會 POST 到不同的 php 檔案)
                 string postTargetUrl = currentLoginUrl;
-                HtmlNode formNode = doc.DocumentNode.SelectSingleNode("//form[@name='loginfrm']");
+                HtmlNode formNode = doc.DocumentNode.SelectSingleNode("//form[@name='loginfrm']") ?? doc.DocumentNode.SelectSingleNode("//form");
+                
                 if (formNode != null)
                 {
                     string action = formNode.GetAttributeValue("action", "");
                     if (!string.IsNullOrWhiteSpace(action))
                     {
                         if (action.StartsWith("http")) postTargetUrl = action;
-                        else postTargetUrl = new Uri(new Uri(currentLoginUrl), action).ToString();
+                        else postTargetUrl = new Uri(loginUri, action).ToString();
                     }
                 }
 
-                // 使用 Dictionary 蒐集畫面上「所有」輸入欄位 (包含 submit 按鈕與隱藏 token)
                 var formDict = new Dictionary<string, string>();
-                var inputs = doc.DocumentNode.SelectNodes("//form[@name='loginfrm']//input") ?? doc.DocumentNode.SelectNodes("//input");
-                
+
+                // 1. 抓取所有 <input> (包含隱藏的 Token 與 Submit 按鈕)
+                var inputs = formNode?.SelectNodes(".//input") ?? doc.DocumentNode.SelectNodes("//input");
                 if (inputs != null)
                 {
                     foreach (var input in inputs)
                     {
                         string name = input.GetAttributeValue("name", "");
                         string value = input.GetAttributeValue("value", "");
-                        
-                        // 將欄位裝入字典 (排除純 button)
                         if (!string.IsNullOrEmpty(name) && input.GetAttributeValue("type", "").ToLower() != "button")
                         {
                             formDict[name] = value;
@@ -115,11 +113,25 @@ namespace FormCrawlerApp
                     }
                 }
 
-                // 強制覆寫我們的帳號與密碼
+                // 2. 抓取所有 <select> (下拉選單，如語系、網域等，這是舊版漏掉的關鍵！)
+                var selects = formNode?.SelectNodes(".//select") ?? doc.DocumentNode.SelectNodes("//select");
+                if (selects != null)
+                {
+                    foreach (var sel in selects)
+                    {
+                        string name = sel.GetAttributeValue("name", "");
+                        var selectedOption = sel.SelectSingleNode(".//option[@selected]") ?? sel.SelectSingleNode(".//option");
+                        if (selectedOption != null && !string.IsNullOrEmpty(name))
+                        {
+                            formDict[name] = selectedOption.GetAttributeValue("value", selectedOption.InnerText).Trim();
+                        }
+                    }
+                }
+
+                // 覆寫帳號與密碼
                 formDict["login"] = username;
                 formDict["passwd"] = password;
 
-                // 轉換為 HttpClient 規定的格式
                 var formData = new List<KeyValuePair<string, string>>();
                 foreach (var kvp in formDict)
                 {
@@ -127,8 +139,10 @@ namespace FormCrawlerApp
                 }
 
                 var content = new FormUrlEncodedContent(formData);
+                
+                // 【老舊系統殺手鐧】強制移除 Content-Type 的 charset=utf-8 後綴
+                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-www-form-urlencoded");
 
-                // 送出登入請求
                 HttpResponseMessage response = await client.PostAsync(postTargetUrl, content);
                 response.EnsureSuccessStatusCode();
 
@@ -137,14 +151,18 @@ namespace FormCrawlerApp
                 // 驗證是否登入成功
                 if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
                 {
-                    return false;
+                    // 【除錯神器】把伺服器拒絕登入的畫面存下來
+                    System.IO.File.WriteAllText("LoginError_Debug.html", responseContent, Encoding.UTF8);
+                    
+                    // 拋出明確例外，讓 MainForm 顯示出來
+                    throw new Exception("伺服器拒絕了登入請求！\n已將伺服器回傳的畫面存入程式所在資料夾下的 [LoginError_Debug.html]。\n請雙擊打開該檔案，看看伺服器顯示了什麼錯誤訊息。");
                 }
 
                 return true;
             }
             catch (Exception ex)
             {
-                throw new Exception("登入連線失敗：" + ex.Message);
+                throw new Exception(ex.Message);
             }
         }
 
@@ -152,14 +170,11 @@ namespace FormCrawlerApp
         {
             try
             {
-                // 抓取爬蟲資料時，確保來源網址(Referer)維持在登入首頁，避免被踢出
-                if (client.DefaultRequestHeaders.Contains("Referer"))
-                    client.DefaultRequestHeaders.Remove("Referer");
+                if (client.DefaultRequestHeaders.Contains("Referer")) client.DefaultRequestHeaders.Remove("Referer");
                 client.DefaultRequestHeaders.Add("Referer", currentLoginUrl);
 
                 HttpResponseMessage response = await client.GetAsync(url);
                 response.EnsureSuccessStatusCode(); 
-                
                 return await SafeReadAsStringAsync(response);
             }
             catch (Exception ex)
