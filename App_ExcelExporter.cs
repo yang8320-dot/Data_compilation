@@ -1,58 +1,62 @@
 /*
- * 檔案功能：將文字檔資料讀出並匯出為帶有超連結的 Excel 檔案。
- * 對應選單名稱：報表匯出
- * 對應資料庫名稱：無
- * 對應資料表名稱：無
+ * 檔案功能：匯出資料至 Excel，設定自訂表頭與藍色底線超連結。
+ * 對應選單名稱：無
  */
-using ClosedXML.Excel;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using ClosedXML.Excel;
 
 namespace FormCrawlerApp
 {
     public class App_ExcelExporter
     {
-        public async Task ExportAsync(string outputPath, List<string[]> data)
+        public async Task ExportAsync(string filePath, List<string[]> dataList)
         {
             await Task.Run(() =>
             {
                 using (var workbook = new XLWorkbook())
                 {
-                    var worksheet = workbook.Worksheets.Add("經手表單資料");
+                    var worksheet = workbook.Worksheets.Add("表單資料");
 
-                    // 設定標頭
-                    string[] headers = { "序號", "表單單號", "申請日期", "申請人", "主旨", "步驟名稱", "狀態", "處理時間" };
+                    // 【需求 1】設定第一列專屬名稱
+                    string[] headers = new string[] { "表單單號", "表單主題", "狀態", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "網址" };
                     for (int i = 0; i < headers.Length; i++)
                     {
                         worksheet.Cell(1, i + 1).Value = headers[i];
                         worksheet.Cell(1, i + 1).Style.Font.Bold = true;
+                        worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
                     }
 
-                    // 填入資料
-                    for (int r = 0; r < data.Count; r++)
+                    // 寫入資料
+                    int rowIdx = 2;
+                    foreach (var row in dataList)
                     {
-                        int excelRow = r + 2;
-                        for (int c = 0; c < 8; c++) // 前 8 個欄位是可視資料
+                        for (int colIdx = 0; colIdx < row.Length; colIdx++)
                         {
-                            worksheet.Cell(excelRow, c + 1).Value = data[r][c];
+                            if (colIdx == 8) // 第9欄是網址欄位
+                            {
+                                string link = row[colIdx];
+                                if (!string.IsNullOrWhiteSpace(link))
+                                {
+                                    // 【需求 3】以文字「超連結」顯示，並設定真實連結
+                                    worksheet.Cell(rowIdx, 9).Value = "超連結";
+                                    worksheet.Cell(rowIdx, 9).SetHyperlink(new XLHyperlink(link));
+                                    worksheet.Cell(rowIdx, 9).Style.Font.FontColor = XLColor.Blue;
+                                    worksheet.Cell(rowIdx, 9).Style.Font.Underline = XLFontUnderlineValues.Single;
+                                }
+                            }
+                            else
+                            {
+                                worksheet.Cell(rowIdx, colIdx + 1).Value = row[colIdx];
+                            }
                         }
-
-                        // 處理超連結 (第 9 個欄位 data[r][8] 為 URL)
-                        string url = data[r][8];
-                        if (!string.IsNullOrEmpty(url))
-                        {
-                            // 將主旨欄位設定為超連結
-                            var subjectCell = worksheet.Cell(excelRow, 5);
-                            subjectCell.SetHyperlink(new XLHyperlink(url));
-                            subjectCell.Style.Font.FontColor = XLColor.Blue;
-                            subjectCell.Style.Font.Underline = XLFontUnderlineValues.Single;
-                        }
+                        rowIdx++;
                     }
 
                     // 自動調整欄寬
                     worksheet.Columns().AdjustToContents();
-                    workbook.SaveAs(outputPath);
+                    workbook.SaveAs(filePath);
                 }
             });
         }
