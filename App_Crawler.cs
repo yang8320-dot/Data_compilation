@@ -1,6 +1,3 @@
-/*
- * 檔案功能：解析 HTML 內容，支援日期強制轉換為「年/月/日」格式。
- */
 using HtmlAgilityPack;
 using System;
 using System.Collections.Generic;
@@ -41,16 +38,17 @@ namespace FormCrawlerApp
                         // 過濾掉包含標題列的資料行
                         if (combinedText.Contains("表單單號") || combinedText.Contains("存檔時間")) continue;
 
+                        // 依序重新對應：0.單號 1.主題 2.狀態 3.存檔 4.承辦人 5.目前處理者 6.申請時間 7.修改時間
                         string formNo = cellTexts.Count > 0 ? cellTexts[0] : "";
                         string subject = cellTexts.Count > 1 ? cellTexts[1] : "";
-                        string status1 = cellTexts.Count > 2 ? cellTexts[2] : ""; 
-                        string status2 = cellTexts.Count > 3 ? cellTexts[3] : "";
-                        string applicant = cellTexts.Count > 5 ? cellTexts[5] : "";
-                        string handler = cellTexts.Count > 6 ? cellTexts[6] : "";
-                        string currentProcessor = cellTexts.Count > 7 ? cellTexts[7] : "";
-                        // 強制將時間轉換為 YYYY/MM/DD
-                        string applyTime = cellTexts.Count > 8 ?
-                        FormatToDateOnly(cellTexts[8]) : "";
+                        string status = cellTexts.Count > 2 ? cellTexts[2] : ""; 
+                        string saveStatus = cellTexts.Count > 3 ? cellTexts[3] : "";
+                        string handler = cellTexts.Count > 4 ? cellTexts[4] : "";
+                        string currentProcessor = cellTexts.Count > 5 ? cellTexts[5] : "";
+                        
+                        // 強制轉換為 yyyy-MM-dd
+                        string applyTime = cellTexts.Count > 6 ? FormatToDateOnly(cellTexts[6]) : "";
+                        string modifyTime = cellTexts.Count > 7 ? FormatToDateOnly(cellTexts[7]) : "";
 
                         if (string.IsNullOrEmpty(formNo) && string.IsNullOrEmpty(subject)) continue;
 
@@ -64,14 +62,11 @@ namespace FormCrawlerApp
                             else if (link.StartsWith("javascript")) 
                                 link = "";
 
-                            // 修正雙重 eipplus 的網址問題
                             link = link.Replace("/eipplus/eipplus/", "/eipplus/");
-                            
-                            // 【修正點 1】網址 view_ 改成 print_
                             link = link.Replace("view_formsflow", "print_frameset");
                         }
 
-                        extractedData.Add(new string[] { formNo, subject, status1, status2, applicant, handler, currentProcessor, applyTime, link });
+                        extractedData.Add(new string[] { formNo, subject, status, saveStatus, handler, currentProcessor, applyTime, modifyTime, link });
                     }
                     catch { continue; }
                 }
@@ -79,19 +74,30 @@ namespace FormCrawlerApp
             });
         }
 
-        // 輔助方法：強制將日期字串轉換為「年/月/日」
+        // 輔助方法：強制將文字內容中最前面的日期擷取轉換為 yyyy-MM-dd
         private string FormatToDateOnly(string datetimeStr)
         {
             if (string.IsNullOrWhiteSpace(datetimeStr)) return "";
-            if (DateTime.TryParse(datetimeStr, out DateTime dt))
+            datetimeStr = datetimeStr.Trim();
+
+            // 尋找字串中最前面的 yyyy/MM/dd, yyyy-MM-dd 或 yyyy.MM.dd
+            var match = System.Text.RegularExpressions.Regex.Match(datetimeStr, @"(\d{4})[./-](\d{1,2})[./-](\d{1,2})");
+            if (match.Success)
             {
-                return dt.ToString("yyyy/MM/dd");
+                if (DateTime.TryParse(match.Value.Replace(".", "-").Replace("/", "-"), out DateTime dt))
+                {
+                    return dt.ToString("yyyy-MM-dd");
+                }
             }
-            
-            var parts = datetimeStr.Split(' ');
-            if (parts.Length > 0 && parts[0].Contains("/")) return parts[0];
-            
-            return datetimeStr;
+
+            // 若無明顯符號，針對前面第一個單字嘗試轉換
+            var parts = datetimeStr.Split(new char[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length > 0 && DateTime.TryParse(parts[0], out DateTime dtFallback))
+            {
+                return dtFallback.ToString("yyyy-MM-dd");
+            }
+
+            return datetimeStr; 
         }
 
         public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
@@ -100,7 +106,6 @@ namespace FormCrawlerApp
             {
                 HtmlDocument doc = new HtmlDocument();
                 doc.Load(htmlFilePath, System.Text.Encoding.UTF8);
-                
                 return ParseHtmlContentAsync(doc.DocumentNode.OuterHtml).Result;
             });
         }
