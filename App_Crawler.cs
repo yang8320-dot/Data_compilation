@@ -1,6 +1,5 @@
 /*
- * 檔案功能：解析 HTML 內容，剔除無效標題列，並修正雙重 eipplus 網址。
- * 對應選單名稱：網頁爬蟲
+ * 檔案功能：解析 HTML 內容，支援日期強制轉換為「年/月/日」格式。
  */
 using HtmlAgilityPack;
 using System;
@@ -30,65 +29,67 @@ namespace FormCrawlerApp
                         if (cells == null || cells.Count < 5) continue; 
 
                         int offset = 0;
-                        if (cells[0].InnerHtml.ToLower().Contains("checkbox"))
-                        {
-                            offset = 1; 
-                        }
+                        if (cells[0].InnerHtml.ToLower().Contains("checkbox")) offset = 1; 
 
-                        // 收集該行所有的 td 文字
                         List<string> cellTexts = new List<string>();
                         for (int i = offset; i < cells.Count; i++) {
                             cellTexts.Add(CleanText(cells[i].InnerText));
                         }
 
                         string combinedText = string.Join("", cellTexts);
-                        
-                        // 【需求 2】過濾掉包含標題列的資料行，一律不存入 Excel
                         if (combinedText.Contains("表單單號") || combinedText.Contains("存檔時間")) continue;
 
-                        // 針對需求 1 的對應位置提取資料 (略過原本的存檔時間)
                         string formNo = cellTexts.Count > 0 ? cellTexts[0] : "";
                         string subject = cellTexts.Count > 1 ? cellTexts[1] : "";
-                        string status1 = cellTexts.Count > 2 ? cellTexts[2] : ""; // 對應 HTML的重要性/狀態
-                        string status2 = cellTexts.Count > 3 ? cellTexts[3] : ""; // 對應 HTML的狀態
-                        // HTML的索引4為存檔時間，我們略過它不抓
+                        string status1 = cellTexts.Count > 2 ? cellTexts[2] : ""; 
+                        string status2 = cellTexts.Count > 3 ? cellTexts[3] : ""; 
+                        
                         string applicant = cellTexts.Count > 5 ? cellTexts[5] : "";
                         string handler = cellTexts.Count > 6 ? cellTexts[6] : "";
                         string currentProcessor = cellTexts.Count > 7 ? cellTexts[7] : "";
-                        string applyTime = cellTexts.Count > 8 ? cellTexts[8] : "";
+                        
+                        // 【需求 3】強制將時間轉換為 YYYY/MM/DD
+                        string applyTime = cellTexts.Count > 8 ? FormatToDateOnly(cellTexts[8]) : "";
 
-                        // 如果單號跟主題都是空的，代表這行不是有效資料，跳過
                         if (string.IsNullOrEmpty(formNo) && string.IsNullOrEmpty(subject)) continue;
 
-                        // 處理網址
                         string link = "";
                         HtmlNode linkNode = row.SelectSingleNode(".//a[@href]");
                         if (linkNode != null)
                         {
                             link = linkNode.GetAttributeValue("href", "");
                             if (!link.StartsWith("http") && !link.StartsWith("javascript"))
-                            {
                                 link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
-                            }
                             else if (link.StartsWith("javascript")) 
-                            {
-                                link = ""; // 略過無效的 JavaScript 點擊
-                            }
+                                link = ""; 
 
-                            // 【需求 3】修正雙重 eipplus 的網址問題
                             link = link.Replace("/eipplus/eipplus/", "/eipplus/");
                         }
 
                         extractedData.Add(new string[] { formNo, subject, status1, status2, applicant, handler, currentProcessor, applyTime, link });
                     }
-                    catch 
-                    {
-                        continue; 
-                    }
+                    catch { continue; }
                 }
-
                 return extractedData;
             });
+        }
+
+        // 輔助方法：強制將日期字串轉換為「年/月/日」
+        private string FormatToDateOnly(string datetimeStr)
+        {
+            if (string.IsNullOrWhiteSpace(datetimeStr)) return "";
+            
+            // 嘗試解析為標準日期，若成功則強制輸出 yyyy/MM/dd
+            if (DateTime.TryParse(datetimeStr, out DateTime dt))
+            {
+                return dt.ToString("yyyy/MM/dd");
+            }
+            
+            // 若無法解析 (有時格式比較怪異)，則用空白切割，只取前面的日期部分
+            var parts = datetimeStr.Split(' ');
+            if (parts.Length > 0 && parts[0].Contains("/")) return parts[0];
+            
+            return datetimeStr;
         }
 
         public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
