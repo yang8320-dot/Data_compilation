@@ -1,5 +1,5 @@
 /*
- * 檔案功能：解析 HTML 內容，支援日期強制轉換為「年/月/日」格式。
+ * 檔案功能：解析 HTML 內容，修正網址為列印格式 (print_frameset)。
  */
 using HtmlAgilityPack;
 using System;
@@ -37,19 +37,15 @@ namespace FormCrawlerApp
                         }
 
                         string combinedText = string.Join("", cellTexts);
-                        // 過濾掉包含標題列的資料行
                         if (combinedText.Contains("表單單號") || combinedText.Contains("存檔時間")) continue;
 
                         string formNo = cellTexts.Count > 0 ? cellTexts[0] : "";
                         string subject = cellTexts.Count > 1 ? cellTexts[1] : "";
                         string status1 = cellTexts.Count > 2 ? cellTexts[2] : ""; 
                         string status2 = cellTexts.Count > 3 ? cellTexts[3] : ""; 
-                        
                         string applicant = cellTexts.Count > 5 ? cellTexts[5] : "";
                         string handler = cellTexts.Count > 6 ? cellTexts[6] : "";
                         string currentProcessor = cellTexts.Count > 7 ? cellTexts[7] : "";
-                        
-                        // 強制將時間轉換為 YYYY/MM/DD
                         string applyTime = cellTexts.Count > 8 ? FormatToDateOnly(cellTexts[8]) : "";
 
                         if (string.IsNullOrEmpty(formNo) && string.IsNullOrEmpty(subject)) continue;
@@ -61,10 +57,12 @@ namespace FormCrawlerApp
                             link = linkNode.GetAttributeValue("href", "");
                             if (!link.StartsWith("http") && !link.StartsWith("javascript"))
                                 link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
-                            else if (link.StartsWith("javascript")) 
-                                link = ""; 
+                            
+                            // 【需求 1】網址修正：將檢視網址改為列印網址
+                            // 範例：將 view_formsflow 改為 print_frameset
+                            link = link.Replace("view_formsflow", "print_frameset");
 
-                            // 修正雙重 eipplus 的網址問題
+                            // 修正雙重 eipplus 路徑
                             link = link.Replace("/eipplus/eipplus/", "/eipplus/");
                         }
 
@@ -76,30 +74,13 @@ namespace FormCrawlerApp
             });
         }
 
-        // 輔助方法：強制將日期字串轉換為「年/月/日」
         private string FormatToDateOnly(string datetimeStr)
         {
             if (string.IsNullOrWhiteSpace(datetimeStr)) return "";
-            
-            if (DateTime.TryParse(datetimeStr, out DateTime dt))
-            {
-                return dt.ToString("yyyy/MM/dd");
-            }
-            
+            if (DateTime.TryParse(datetimeStr, out DateTime dt)) return dt.ToString("yyyy/MM/dd");
             var parts = datetimeStr.Split(' ');
             if (parts.Length > 0 && parts[0].Contains("/")) return parts[0];
-            
             return datetimeStr;
-        }
-
-        public async Task<List<string[]>> ParseHtmlAsync(string htmlFilePath)
-        {
-            return await Task.Run(() =>
-            {
-                HtmlDocument doc = new HtmlDocument();
-                doc.Load(htmlFilePath, System.Text.Encoding.UTF8);
-                return ParseHtmlContentAsync(doc.DocumentNode.OuterHtml).Result;
-            });
         }
 
         private string CleanText(string input)
