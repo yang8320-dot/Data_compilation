@@ -43,8 +43,7 @@ namespace FormCrawlerApp
                         string formNo = cellTexts.Count > 0 ? cellTexts[0] : "";
                         string subject = cellTexts.Count > 1 ? cellTexts[1] : "";
                         string status1 = cellTexts.Count > 2 ? cellTexts[2] : ""; 
-                        string status2 = cellTexts.Count > 3 ? cellTexts[3] : ""; 
-                        
+                        string status2 = cellTexts.Count > 3 ? cellTexts[3] : "";
                         string applicant = cellTexts.Count > 5 ? cellTexts[5] : "";
                         string handler = cellTexts.Count > 6 ? cellTexts[6] : "";
                         string currentProcessor = cellTexts.Count > 7 ? cellTexts[7] : "";
@@ -62,10 +61,13 @@ namespace FormCrawlerApp
                             if (!link.StartsWith("http") && !link.StartsWith("javascript"))
                                 link = "http://192.168.1.83/eipplus/" + link.TrimStart('/');
                             else if (link.StartsWith("javascript")) 
-                                link = ""; 
-
+                                link = "";
+                            
                             // 修正雙重 eipplus 的網址問題
                             link = link.Replace("/eipplus/eipplus/", "/eipplus/");
+                            
+                            // 【修改點】將網址的 view_formsflow 取代為列印模式的 print_frameset
+                            link = link.Replace("view_formsflow", "print_frameset");
                         }
 
                         extractedData.Add(new string[] { formNo, subject, status1, status2, applicant, handler, currentProcessor, applyTime, link });
@@ -80,7 +82,6 @@ namespace FormCrawlerApp
         private string FormatToDateOnly(string datetimeStr)
         {
             if (string.IsNullOrWhiteSpace(datetimeStr)) return "";
-            
             if (DateTime.TryParse(datetimeStr, out DateTime dt))
             {
                 return dt.ToString("yyyy/MM/dd");
