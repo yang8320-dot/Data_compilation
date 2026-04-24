@@ -1,5 +1,5 @@
 /*
- * 檔案功能：處理 HTTP 網路請求，優化「已登入判斷」邏輯，避免重複登入被伺服器阻擋。
+ * 檔案功能：處理 HTTP 網路請求，具備精準登入狀態判斷、代理伺服器穿透與檔案下載功能。
  * 對應選單名稱：網路連線
  */
 using System;
@@ -22,6 +22,7 @@ namespace FormCrawlerApp
         {
             cookieContainer = new CookieContainer();
             
+            // 系統代理伺服器穿透 (解決 407 Proxy 錯誤)
             IWebProxy systemProxy = WebRequest.GetSystemWebProxy();
             systemProxy.Credentials = CredentialCache.DefaultCredentials;
 
@@ -44,12 +45,22 @@ namespace FormCrawlerApp
             client.DefaultRequestHeaders.Add("Upgrade-Insecure-Requests", "1");
         }
 
+        // 安全讀取網頁內容，避免伺服器回傳「無效字元集」導致程式崩潰
         private async Task<string> SafeReadAsStringAsync(HttpResponseMessage response)
         {
             byte[] bytes = await response.Content.ReadAsByteArrayAsync();
             return Encoding.UTF8.GetString(bytes);
         }
 
+        // 💡 【核心修正】精準判斷是否為登入畫面，避免被首頁的「變更密碼」超連結誤導
+        private bool IsLoginPage(string htmlContent)
+        {
+            if (string.IsNullOrWhiteSpace(htmlContent)) return false;
+            // 嚴格比對表單名稱，只要沒有 name="loginfrm" 就代表已經登入成功！
+            return htmlContent.Contains("name=\"loginfrm\"") || htmlContent.Contains("id=\"loginfrm\"");
+        }
+
+        // 執行背景登入
         public async Task<bool> LoginAsync(string username, string password)
         {
             try
@@ -62,22 +73,20 @@ namespace FormCrawlerApp
                     currentLoginUrl = "http://192.168.1.83/eipplus/login.php"; 
                 }
 
-                // 【關鍵修正】：改變「是否已登入」的判斷方式
-                // 我們直接去摸一下「你要爬蟲的第一個目標網址」。
-                // 這樣就不會被 login.php 騙，避免重複登入被伺服器阻擋！
+                // 測試目標爬蟲網址，判斷是否已經處於登入狀態
                 string testUrl = settings.CrawlUrls.Count > 0 ? settings.CrawlUrls[0] : currentLoginUrl.Replace("login.php", "index.php");
                 
                 HttpResponseMessage testResponse = await client.GetAsync(testUrl);
                 string testContent = await SafeReadAsStringAsync(testResponse);
 
-                // 如果目標網頁裡面「沒有」登入表單，代表我們現在其實是登入成功的狀態，直接接續爬蟲！
-                if (!testContent.Contains("loginfrm") && !testContent.Contains("passwd"))
+                // 如果測試網頁不是登入畫面，代表我們已經無縫接軌登入了，直接開始爬蟲！
+                if (!IsLoginPage(testContent))
                 {
                     return true; 
                 }
 
                 // ==========================================
-                // 如果真的沒有登入，才正式開始執行登入流程
+                // 如果真的看到登入表單，才正式開始執行登入流程
                 // ==========================================
 
                 Uri loginUri = new Uri(currentLoginUrl);
@@ -153,10 +162,11 @@ namespace FormCrawlerApp
 
                 string responseContent = await SafeReadAsStringAsync(response);
 
-                if (responseContent.Contains("loginfrm") || responseContent.Contains("passwd"))
+                // 再次利用嚴格判斷器驗證登入結果
+                if (IsLoginPage(responseContent))
                 {
                     System.IO.File.WriteAllText("LoginError_Debug.html", responseContent, Encoding.UTF8);
-                    throw new Exception("伺服器拒絕了登入請求！\n已將伺服器回傳的畫面存入程式所在資料夾下的 [LoginError_Debug.html]。\n請雙擊打開該檔案，看看伺服器顯示了什麼錯誤訊息。");
+                    throw new Exception("伺服器拒絕了登入請求！請確認帳密。");
                 }
 
                 return true;
@@ -167,6 +177,7 @@ namespace FormCrawlerApp
             }
         }
 
+        // 抓取指定網址的 HTML 原始碼
         public async Task<string> GetHtmlAsync(string url)
         {
             try
@@ -184,6 +195,7 @@ namespace FormCrawlerApp
             }
         }
 
+        // 下載實體檔案
         public async Task DownloadFileAsync(string url, string savePath)
         {
             try
