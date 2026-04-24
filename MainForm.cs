@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗，支援提示文字自動換行與隨機爬蟲間隔。
+ * 檔案功能：應用程式主視窗，支援游標選取提示文字與隨機爬蟲間隔。
  * 對應選單名稱：主選單
  */
 using System;
@@ -15,7 +15,7 @@ namespace FormCrawlerApp
     public class MainForm : Form
     {
         private Button btnExecute, btnSettings, btnOpenFolder;
-        private Label lblStatus;
+        private TextBox txtStatus; // 替換為 TextBox 以支援游標選取
         private App_Settings settings;
         private App_Network network;
         private App_Crawler crawler;
@@ -38,6 +38,7 @@ namespace FormCrawlerApp
             this.StartPosition = FormStartPosition.CenterScreen;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
+            this.BackColor = Color.WhiteSmoke;
 
             Panel menuPanel = new Panel { Dock = DockStyle.Top, Height = 70, BackColor = Color.LightSteelBlue };
             btnSettings = new Button { Text = "⚙️ 帳密與網址設定", Location = new Point(15, 15), Size = new Size(180, 40), Cursor = Cursors.Hand };
@@ -54,19 +55,23 @@ namespace FormCrawlerApp
                 else MessageBox.Show("資料夾不存在！");
             };
 
-            // 【關鍵修正 3】取消 AutoSize，設定固定範圍與自動換行，解決文字超長被遮斷的問題
-            lblStatus = new Label { 
+            // 【關鍵修正 2】改用唯讀的 TextBox，隱藏邊框並套用背景色，即可實現滑鼠反白選取文字
+            txtStatus = new TextBox { 
                 Text = "系統就緒。請確認網址清單後執行。", 
                 Location = new Point(30, 200), 
                 Size = new Size(700, 150), 
-                AutoSize = false, 
+                Multiline = true, // 允許多行
+                ReadOnly = true, // 設定唯讀，防止使用者修改
+                BorderStyle = BorderStyle.None, // 隱藏邊框，偽裝成 Label
+                BackColor = this.BackColor, // 跟隨視窗背景色
                 ForeColor = Color.DarkSlateGray,
-                Font = new Font("Microsoft JhengHei", 11F)
+                Font = new Font("Microsoft JhengHei", 11F),
+                Cursor = Cursors.IBeam // 滑鼠移過去顯示輸入游標，提示可選取
             };
 
             this.Controls.Add(btnExecute);
             this.Controls.Add(btnOpenFolder);
-            this.Controls.Add(lblStatus);
+            this.Controls.Add(txtStatus);
             this.Controls.Add(menuPanel);
         }
 
@@ -78,12 +83,12 @@ namespace FormCrawlerApp
             }
 
             try {
-                UIState(false, "系統連線中：正在自動檢查登入狀態...");
+                UIState(false, "系統連線中：正在自動檢查登入狀態...\n(若遇 407 錯誤，正嘗試以系統網域權限穿透 Proxy)");
                 bool login = await network.LoginAsync(settings.Username, settings.Password);
                 if (!login) { UIState(true, "登入失敗！請確認帳號密碼。"); return; }
 
                 List<string[]> allData = new List<string[]>();
-                Random rnd = new Random(); // 準備隨機數產生器
+                Random rnd = new Random(); 
 
                 for (int i = 0; i < settings.CrawlUrls.Count; i++)
                 {
@@ -94,7 +99,6 @@ namespace FormCrawlerApp
                     var data = await crawler.ParseHtmlContentAsync(html);
                     allData.AddRange(data);
 
-                    // 【關鍵修正 1】每次抓取完，隨機等待 2000 毫秒 ~ 4000 毫秒 (最後一頁除外)
                     if (i < settings.CrawlUrls.Count - 1)
                     {
                         int waitTime = rnd.Next(2000, 4001); 
@@ -121,7 +125,7 @@ namespace FormCrawlerApp
             }
             btnExecute.Enabled = enable;
             btnSettings.Enabled = enable;
-            lblStatus.Text = msg;
+            txtStatus.Text = msg; // 更新 TextBox 的文字
         }
     }
 }
