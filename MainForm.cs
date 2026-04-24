@@ -1,11 +1,12 @@
 /*
- * 檔案功能：應用程式主視窗，新增 TXT 暫存與批次 PDF 下載功能。
+ * 檔案功能：應用程式主視窗，新增 TXT 暫存與批次 PDF 解析與下載功能。
  */
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -70,9 +71,13 @@ namespace FormCrawlerApp
                 Location = new Point(30, 220), Size = new Size(700, 150), AutoSize = false, 
                 ForeColor = Color.DarkSlateGray, Font = new Font("Microsoft JhengHei", 11F)
             };
-            this.Controls.Add(btnExecute); this.Controls.Add(btnOpenFolder);
-            this.Controls.Add(cmbCategories); this.Controls.Add(btnDownloadPdf);
-            this.Controls.Add(lblStatus); this.Controls.Add(menuPanel);
+            
+            this.Controls.Add(btnExecute); 
+            this.Controls.Add(btnOpenFolder);
+            this.Controls.Add(cmbCategories); 
+            this.Controls.Add(btnDownloadPdf);
+            this.Controls.Add(lblStatus); 
+            this.Controls.Add(menuPanel);
         }
 
         private async void BtnExecute_Click(object sender, EventArgs e)
@@ -110,6 +115,7 @@ namespace FormCrawlerApp
                 Dictionary<string, List<string[]>> categorizedData = new Dictionary<string, List<string[]>>();
                 categorizedData["未分類其他表單"] = new List<string[]>(); 
                 foreach (var kw in targetKeywords) categorizedData[kw] = new List<string[]>();
+                
                 foreach (var row in allData) {
                     string formNo = row[0], subject = row[1];
                     bool matched = false;
@@ -136,7 +142,8 @@ namespace FormCrawlerApp
                         List<string> urlsToSave = new List<string>();
                         foreach(var row in kvp.Value)
                         {
-                            // 【修正點 3-1】暫存檔多儲存「主題」資訊 (格式: 單號|主題|網址)
+                            // 儲存格式: 單號|主題|網址
+                            // 對應索引: row[0]=單號, row[1]=主題, row[8]=網址 (總共9欄)
                             urlsToSave.Add($"{row[0]}|{row[1]}|{row[8]}");
                         }
                         File.WriteAllLines(txtPath, urlsToSave);
@@ -184,14 +191,45 @@ namespace FormCrawlerApp
                     string url = parts[2].Trim();
                     if (string.IsNullOrWhiteSpace(url)) continue;
 
-                    UIState(false, $"正在下載 ({i + 1}/{lines.Length}): {formNo}");
+                    UIState(false, $"正在解析網頁 ({i + 1}/{lines.Length}): {formNo}");
                     
-                    // 【修正點 3-2】檔名規則: 單號_主題.pdf
-                    // 移除檔名中可能存在的非法字元
+                    // 1. 下載包含 PDF.js Viewer 的預覽網頁
+                    string viewerHtml = await network.GetHtmlAsync(url);
+                    string realPdfUrl = url;
+
+                    // 2. 利用正規表達式從 HTML 中找出真實的 PDF 下載連結 (.pdf)
+                    var fileMatch = System.Text.RegularExpressions.Regex.Match(viewerHtml, @"(?:file|href|src)\s*=\s*[""']?([^""'>\s]+\.pdf(?:[^""'>\s]*)?)[""']?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    
+                    if (fileMatch.Success) 
+                    {
+                        realPdfUrl = System.Net.WebUtility.UrlDecode(fileMatch.Groups[1].Value);
+                    } 
+                    else 
+                    {
+                        // 備案：如果找不到 pdf 結尾的文字，嘗試將 print_frameset 強制替換為系統常見匯出參數
+                        realPdfUrl = url.Replace("print_frameset", "export_pdf").Replace("view_formsflow", "export_pdf");
+                    }
+
+                    // 3. 補齊絕對路徑 (處理相對路徑的情況)
+                    if (realPdfUrl.StartsWith("/")) 
+                    {
+                        realPdfUrl = "http://192.168.1.83" + realPdfUrl;
+                    } 
+                    else if (!realPdfUrl.StartsWith("http")) 
+                    {
+                        realPdfUrl = "http://192.168.1.83/eipplus/" + realPdfUrl.TrimStart('/');
+                    }
+
+                    // 清理主題中的非法字元，確保可以存檔
                     string safeSubject = string.Concat(subject.Split(Path.GetInvalidFileNameChars()));
+                    
+                    // 4. 組合檔名： 單號_主題.pdf
                     string savePath = Path.Combine(pdfDir, $"{formNo}_{safeSubject}.pdf");
                     
-                    await network.DownloadFileAsync(url, savePath);
+                    UIState(false, $"正在下載實體檔案 ({i + 1}/{lines.Length}): {formNo}");
+                    
+                    // 下載真實 PDF
+                    await network.DownloadFileAsync(realPdfUrl, savePath);
 
                     if (i < lines.Length - 1)
                     {
@@ -209,8 +247,10 @@ namespace FormCrawlerApp
 
         private void UIState(bool enable, string msg) {
             if (this.InvokeRequired) { this.Invoke(new Action(() => UIState(enable, msg))); return; }
-            btnExecute.Enabled = enable; btnSettings.Enabled = enable;
-            btnDownloadPdf.Enabled = enable; lblStatus.Text = msg;
+            btnExecute.Enabled = enable; 
+            btnSettings.Enabled = enable;
+            btnDownloadPdf.Enabled = enable; 
+            lblStatus.Text = msg;
         }
     }
 }
