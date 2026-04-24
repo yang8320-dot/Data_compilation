@@ -1,7 +1,3 @@
-/*
- * 檔案功能：匯出資料至 Excel，設定自訂表頭與藍色底線超連結。
- * 對應選單名稱：無
- */
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -19,8 +15,8 @@ namespace FormCrawlerApp
                 {
                     var worksheet = workbook.Worksheets.Add("表單資料");
 
-                    // 【需求】設定第一列專屬名稱
-                    string[] headers = new string[] { "表單單號", "表單主題", "狀態", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "網址" };
+                    // 依序更新標題名稱
+                    string[] headers = new string[] { "表單單號", "表單主題", "狀態", "存檔", "承辦人", "目前處理者", "申請時間", "修改時間", "網址" };
                   
                     for (int i = 0; i < headers.Length; i++)
                     {
@@ -29,7 +25,6 @@ namespace FormCrawlerApp
                         worksheet.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.LightGray;
                     }
 
-                    // 寫入資料
                     int rowIdx = 2;
                     foreach (var row in dataList)
                     {
@@ -40,7 +35,6 @@ namespace FormCrawlerApp
                                 string link = row[colIdx];
                                 if (!string.IsNullOrWhiteSpace(link))
                                 {
-                                    // 以文字「超連結」顯示，並設定真實連結
                                     worksheet.Cell(rowIdx, 9).Value = "超連結";
                                     worksheet.Cell(rowIdx, 9).SetHyperlink(new XLHyperlink(link));
                                     worksheet.Cell(rowIdx, 9).Style.Font.FontColor = XLColor.Blue;
@@ -55,10 +49,10 @@ namespace FormCrawlerApp
                         rowIdx++;
                     }
 
-                    // 【修正點 2】調整 Excel 格式：列高與寬度
                     worksheet.Rows().Height = 25;
                     
-                    double[] colWidths = { 50, 65, 9, 9, 9, 15, 15, 15, 10 };
+                    // 9 個欄位的自訂欄寬
+                    double[] colWidths = { 50, 65, 9, 9, 15, 15, 15, 15, 10 };
                     for (int i = 0; i < colWidths.Length; i++)
                     {
                         worksheet.Column(i + 1).Width = colWidths[i];
