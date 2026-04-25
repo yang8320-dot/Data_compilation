@@ -8,35 +8,35 @@ namespace FormCrawlerApp
 {
     public class App_Database
     {
+        // 取得 SQLite 所有 Table (拿掉空的 catch，讓錯誤可以顯示出來)
         public static List<string> GetTables(string dbPath)
         {
             var tables = new List<string>();
-            if (!File.Exists(dbPath)) return tables;
-            try {
-                using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;")) {
-                    conn.Open();
-                    using (var cmd = new SQLiteCommand("SELECT name FROM sqlite_master WHERE type='table';", conn))
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) tables.Add(reader["name"].ToString());
-                    }
+            if (!File.Exists(dbPath)) throw new Exception("找不到指定的 SQLite 檔案！\n路徑：" + dbPath);
+            
+            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;")) {
+                conn.Open();
+                using (var cmd = new SQLiteCommand("SELECT name FROM sqlite_master WHERE type='table';", conn))
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) tables.Add(reader["name"].ToString());
                 }
-            } catch {}
+            }
             return tables;
         }
 
+        // 取得 SQLite 指定 Table 內的所有欄位名稱
         public static List<string> GetColumns(string dbPath, string tableName)
         {
             var cols = new List<string>();
             if (!File.Exists(dbPath) || string.IsNullOrEmpty(tableName)) return cols;
-            try {
-                using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;")) {
-                    conn.Open();
-                    using (var cmd = new SQLiteCommand($"PRAGMA table_info({tableName});", conn))
-                    using (var reader = cmd.ExecuteReader()) {
-                        while (reader.Read()) cols.Add(reader["name"].ToString());
-                    }
+            
+            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;")) {
+                conn.Open();
+                using (var cmd = new SQLiteCommand($"PRAGMA table_info({tableName});", conn))
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) cols.Add(reader["name"].ToString());
                 }
-            } catch {}
+            }
             return cols;
         }
 
@@ -60,7 +60,7 @@ namespace FormCrawlerApp
                         string formNo = row[0]; 
                         if (string.IsNullOrEmpty(formNo)) continue;
 
-                        // 1. 檢查自訂黑名單，若清單內有此表單單號，則略過不寫入
+                        // 檢查自訂黑名單，若清單內有此表單單號，則略過不寫入
                         if (config.ExcludeFormNumbers != null && config.ExcludeFormNumbers.Contains(formNo))
                         {
                             continue;
@@ -89,7 +89,6 @@ namespace FormCrawlerApp
 
                         if (insertCols.Count == 0) continue;
 
-                        // 2. 檢查主表是否已存在
                         bool exists = false;
                         using (var cmdExist = new SQLiteCommand($"SELECT COUNT(1) FROM {config.TargetTable} WHERE {keyDbColumn} = @key", conn))
                         {
@@ -97,7 +96,6 @@ namespace FormCrawlerApp
                             exists = (long)cmdExist.ExecuteScalar() > 0;
                         }
 
-                        // 3. 執行 Update 或 Insert
                         string sql = "";
                         if (exists && updateSets.Count > 0)
                         {
