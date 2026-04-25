@@ -62,7 +62,7 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "經手表單自動化工具";
-            this.Size = new Size(800, 500); 
+            this.Size = new Size(650, 500); 
             this.StartPosition = FormStartPosition.CenterScreen;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
