@@ -44,15 +44,12 @@ namespace FormCrawlerApp
         public string CategoryName { get; set; } = "";
         public bool IsEnabled { get; set; } = false;
         
-        // 寫入主資料庫設定
         public string DbFilePath { get; set; } = "";
         public string TargetTable { get; set; } = "";
         public List<FieldMapping> Mappings { get; set; } = new List<FieldMapping>();
         
-        // 獨立的排除清單資料庫設定
-        public string ExcludeDbFilePath { get; set; } = ""; 
-        public string ExcludeTable { get; set; } = "";
-        public string ExcludeColumn { get; set; } = "";
+        // 新增：使用者自訂的不寫入黑名單 (存表單單號)
+        public List<string> ExcludeFormNumbers { get; set; } = new List<string>();
     }
 
     public class FieldMapping
