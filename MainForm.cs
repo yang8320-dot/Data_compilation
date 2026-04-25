@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗，新增 TXT 暫存與批次 PDF 解析與下載功能。
+ * 檔案功能：應用程式主視窗。加入 Excel 自動清空資料夾與 SQLite 寫入邏輯。
  */
 using System;
 using System.Collections.Generic;
@@ -14,27 +14,49 @@ namespace FormCrawlerApp
 {
     public class MainForm : Form
     {
-        private Button btnExecute, btnSettings, btnOpenFolder, btnDownloadPdf;
+        private Button btnExecute, btnSettings, btnDbSettings, btnOpenFolder, btnDownloadPdf;
         private ComboBox cmbCategories;
         private Label lblStatus;
         private App_Settings settings;
+        private App_DbSettings dbSettings;
         private App_Network network;
         private App_Crawler crawler;
         private App_ExcelExporter excelExporter;
+        private App_Database appDatabase;
 
         public MainForm()
         {
             settings = new App_Settings();
+            dbSettings = App_DbSettings.Load();
             network = new App_Network();
             crawler = new App_Crawler();
             excelExporter = new App_ExcelExporter();
+            appDatabase = new App_Database();
             InitializeUI();
         }
 
+        // 強制鎖定為程式執行目錄下的 ExcelExport 資料夾
         private string GetExportPath()
         {
-            if (!string.IsNullOrWhiteSpace(settings.ExportPath)) return settings.ExportPath;
-            return Application.StartupPath;
+            return Path.Combine(Application.StartupPath, "ExcelExport");
+        }
+
+        // 清空 Excel 資料夾
+        private void CleanExcelFolder(string targetPath)
+        {
+            if (Directory.Exists(targetPath))
+            {
+                try
+                {
+                    DirectoryInfo di = new DirectoryInfo(targetPath);
+                    foreach (FileInfo file in di.GetFiles()) file.Delete();
+                }
+                catch { /* 忽略鎖定的檔案 */ }
+            }
+            else
+            {
+                Directory.CreateDirectory(targetPath);
+            }
         }
 
         private void InitializeUI()
@@ -46,20 +68,27 @@ namespace FormCrawlerApp
             this.Font = new Font("Microsoft JhengHei", 10F);
 
             Panel menuPanel = new Panel { Dock = DockStyle.Top, Height = 70, BackColor = Color.LightSteelBlue };
-            btnSettings = new Button { Text = "⚙️ 系統與路徑設定", Location = new Point(15, 15), Size = new Size(180, 40), Cursor = Cursors.Hand };
+            btnSettings = new Button { Text = "⚙️ 網址與帳密設定", Location = new Point(15, 15), Size = new Size(160, 40), Cursor = Cursors.Hand };
             btnSettings.Click += (s, e) => {
                 if (new SettingsForm(settings).ShowDialog() == DialogResult.OK) { settings.Load(); }
             };
+            
+            btnDbSettings = new Button { Text = "🗄️ 資料庫寫入設定", Location = new Point(190, 15), Size = new Size(160, 40), Cursor = Cursors.Hand };
+            btnDbSettings.Click += (s, e) => {
+                if (new DbSettingsForm(dbSettings).ShowDialog() == DialogResult.OK) { dbSettings = App_DbSettings.Load(); }
+            };
+
             menuPanel.Controls.Add(btnSettings);
+            menuPanel.Controls.Add(btnDbSettings);
 
             btnExecute = new Button { Text = "🚀 1. 執行登入並批次匯入", Location = new Point(30, 90), Size = new Size(250, 50), Font = new Font("Microsoft JhengHei", 11F, FontStyle.Bold), BackColor = Color.PaleGreen, Cursor = Cursors.Hand };
             btnExecute.Click += BtnExecute_Click;
 
-            btnOpenFolder = new Button { Text = "📁 開啟下載資料夾", Location = new Point(300, 90), Size = new Size(200, 50), Cursor = Cursors.Hand };
+            btnOpenFolder = new Button { Text = "📁 開啟 Excel 資料夾", Location = new Point(300, 90), Size = new Size(200, 50), Cursor = Cursors.Hand };
             btnOpenFolder.Click += (s, e) => {
                 string currentPath = GetExportPath();
-                if (Directory.Exists(currentPath)) Process.Start("explorer.exe", currentPath);
-                else MessageBox.Show($"資料夾不存在！\n路徑：{currentPath}");
+                if (!Directory.Exists(currentPath)) Directory.CreateDirectory(currentPath);
+                Process.Start("explorer.exe", currentPath);
             };
 
             cmbCategories = new ComboBox { Location = new Point(30, 160), Size = new Size(250, 30), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -67,7 +96,7 @@ namespace FormCrawlerApp
             btnDownloadPdf.Click += BtnDownloadPdf_Click;
 
             lblStatus = new Label { 
-                Text = "系統就緒。請確認網址清單與存檔路徑後執行。", 
+                Text = "系統就緒。執行時將會先清空 Excel 資料夾。\n注意：請先確認各類別是否開啟「資料庫寫入設定」。", 
                 Location = new Point(30, 220), Size = new Size(700, 150), AutoSize = false, 
                 ForeColor = Color.DarkSlateGray, Font = new Font("Microsoft JhengHei", 11F)
             };
@@ -83,6 +112,9 @@ namespace FormCrawlerApp
         private async void BtnExecute_Click(object sender, EventArgs e)
         {
             if (settings.CrawlUrls.Count == 0) { MessageBox.Show("請先設定爬蟲網址清單。"); return; }
+
+            string exportDir = GetExportPath();
+            CleanExcelFolder(exportDir); // 每次執行前清空資料夾
 
             try {
                 UIState(false, "系統連線中：正在自動檢查登入狀態...");
@@ -106,9 +138,6 @@ namespace FormCrawlerApp
                     }
                 }
 
-                string exportDir = GetExportPath();
-                if (!Directory.Exists(exportDir)) Directory.CreateDirectory(exportDir);
-
                 string[] targetKeywords = new string[] {
                     "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文", "彰濱廠虛驚事件輕度傷害記錄表"
                 };
@@ -130,10 +159,13 @@ namespace FormCrawlerApp
 
                 cmbCategories.Items.Clear();
                 int fileCount = 0;
+                int dbWriteCount = 0;
+
+                UIState(false, "正在匯出 Excel 並寫入資料庫(若有設定)...");
 
                 foreach (var kvp in categorizedData) {
                     if (kvp.Value.Count > 0) {
-                        string fileName = Path.Combine(exportDir, $"{kvp.Key}_匯出_{DateTime.Now:yyyyMMdd}.xlsx");
+                        string fileName = Path.Combine(exportDir, $"{kvp.Key}_匯出_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
                         await excelExporter.ExportAsync(fileName, kvp.Value);
                         fileCount++;
 
@@ -142,16 +174,27 @@ namespace FormCrawlerApp
                         List<string> urlsToSave = new List<string>();
                         foreach(var row in kvp.Value)
                         {
-                            // 儲存格式: 單號|主題|網址
-                            // 對應索引: row[0]=單號, row[1]=主題, row[8]=網址 (總共9欄)
                             urlsToSave.Add($"{row[0]}|{row[1]}|{row[8]}");
                         }
                         File.WriteAllLines(txtPath, urlsToSave);
+
+                        // === 新增：執行資料庫寫入邏輯 ===
+                        var dbConfig = dbSettings.Categories.FirstOrDefault(c => c.CategoryName == kvp.Key);
+                        if (dbConfig != null && dbConfig.IsEnabled)
+                        {
+                            try {
+                                appDatabase.ProcessCategoryData(dbConfig, kvp.Value);
+                                dbWriteCount++;
+                            }
+                            catch (Exception dbEx) {
+                                MessageBox.Show($"寫入資料庫失敗 [{kvp.Key}]：\n{dbEx.Message}");
+                            }
+                        }
                     }
                 }
                 
                 if (cmbCategories.Items.Count > 0) cmbCategories.SelectedIndex = 0;
-                UIState(true, $"✅ 作業完成！已拆分成 {fileCount} 個 Excel。");
+                UIState(true, $"✅ 作業完成！已拆分成 {fileCount} 個 Excel。\n已連動寫入 {dbWriteCount} 個類別至資料庫。");
             }
             catch (Exception ex) { UIState(true, $"❌ 發生錯誤：\n{ex.Message}"); }
         }
@@ -193,11 +236,9 @@ namespace FormCrawlerApp
 
                     UIState(false, $"正在解析網頁 ({i + 1}/{lines.Length}): {formNo}");
                     
-                    // 1. 下載包含 PDF.js Viewer 的預覽網頁
                     string viewerHtml = await network.GetHtmlAsync(url);
                     string realPdfUrl = url;
 
-                    // 2. 利用正規表達式從 HTML 中找出真實的 PDF 下載連結 (.pdf)
                     var fileMatch = System.Text.RegularExpressions.Regex.Match(viewerHtml, @"(?:file|href|src)\s*=\s*[""']?([^""'>\s]+\.pdf(?:[^""'>\s]*)?)[""']?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     
                     if (fileMatch.Success) 
@@ -206,11 +247,9 @@ namespace FormCrawlerApp
                     } 
                     else 
                     {
-                        // 備案：如果找不到 pdf 結尾的文字，嘗試將 print_frameset 強制替換為系統常見匯出參數
                         realPdfUrl = url.Replace("print_frameset", "export_pdf").Replace("view_formsflow", "export_pdf");
                     }
 
-                    // 3. 補齊絕對路徑 (處理相對路徑的情況)
                     if (realPdfUrl.StartsWith("/")) 
                     {
                         realPdfUrl = "http://192.168.1.83" + realPdfUrl;
@@ -220,15 +259,10 @@ namespace FormCrawlerApp
                         realPdfUrl = "http://192.168.1.83/eipplus/" + realPdfUrl.TrimStart('/');
                     }
 
-                    // 清理主題中的非法字元，確保可以存檔
                     string safeSubject = string.Concat(subject.Split(Path.GetInvalidFileNameChars()));
-                    
-                    // 4. 組合檔名： 單號_主題.pdf
                     string savePath = Path.Combine(pdfDir, $"{formNo}_{safeSubject}.pdf");
                     
                     UIState(false, $"正在下載實體檔案 ({i + 1}/{lines.Length}): {formNo}");
-                    
-                    // 下載真實 PDF
                     await network.DownloadFileAsync(realPdfUrl, savePath);
 
                     if (i < lines.Length - 1)
@@ -249,6 +283,7 @@ namespace FormCrawlerApp
             if (this.InvokeRequired) { this.Invoke(new Action(() => UIState(enable, msg))); return; }
             btnExecute.Enabled = enable; 
             btnSettings.Enabled = enable;
+            btnDbSettings.Enabled = enable;
             btnDownloadPdf.Enabled = enable; 
             lblStatus.Text = msg;
         }
