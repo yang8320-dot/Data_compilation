@@ -23,8 +23,7 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            // 1. 視窗總寬度大幅加寬至 950
-            this.Size = new Size(950, 750); 
+            this.Size = new Size(1000, 750); 
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
@@ -79,7 +78,6 @@ namespace FormCrawlerApp
             Label lblDb = new Label { Text = "寫入主庫(SQLite)：", Location = new Point(labelX, y+5), AutoSize = true };
             TextBox txtDb = new TextBox { Text = config.DbFilePath, Location = new Point(controlX, y), Width = 380, ReadOnly = true };
             
-            // 2. 按鈕加大加寬 (Width: 100, Height: 35)
             Button btnDbBrowse = new Button { Text = "選擇資料庫", Location = new Point(570, y - 4), Size = new Size(100, 35), Cursor = Cursors.Hand };
             Button btnDbLoad = new Button { Text = "讀取資料庫", Location = new Point(680, y - 4), Size = new Size(100, 35), Cursor = Cursors.Hand, BackColor = Color.PaleGreen };
             
@@ -100,8 +98,10 @@ namespace FormCrawlerApp
             {
                 Label lblF = new Label { Text = $"爬蟲 [{field}] 寫入：", Location = new Point(15, my+4), AutoSize = true, ForeColor = Color.DarkBlue };
                 
-                // 3. 解決字體遮擋：下拉選單往右移 (X=270)，確保左邊字體有足夠空間
-                ComboBox cmbF = new ComboBox { Location = new Point(270, my), Width = 350, DropDownStyle = ComboBoxStyle.DropDownList };
+                // ！！！修改點！！！
+                // Location.X 從 270 往左移至 220
+                // Width 從 350 縮減至 300
+                ComboBox cmbF = new ComboBox { Location = new Point(220, my), Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
                 
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
                 if (existMap != null) cmbF.Tag = existMap.DbColumn; 
@@ -112,7 +112,7 @@ namespace FormCrawlerApp
             }
             page.Controls.Add(mappingPanel);
 
-            // 右側：排除單號清單 TextBox 往右平移
+            // 右側：排除單號清單 TextBox
             Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(730, 145), AutoSize = true, ForeColor = Color.Brown };
             TextBox txtExclude = new TextBox {
                 Location = new Point(730, 190),
@@ -144,7 +144,6 @@ namespace FormCrawlerApp
                         cb.SelectedIndex = cols.Contains(targetStr) ? cols.IndexOf(targetStr) : 0;
                         
                         int indexCopy = i;
-                        // 移除舊的事件避免重複綁定
                         cb.SelectedIndexChanged -= Cb_SelectedIndexChanged;
                         cb.SelectedIndexChanged += Cb_SelectedIndexChanged;
 
@@ -173,7 +172,6 @@ namespace FormCrawlerApp
                 }
             };
 
-            // 加入 Try-Catch 捕捉真正的錯誤訊息
             btnDbLoad.Click += (s, e) => { 
                 try {
                     LoadMainTables(); 
