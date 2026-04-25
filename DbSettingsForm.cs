@@ -21,12 +21,12 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            this.Size = new Size(650, 700);
+            this.Size = new Size(750, 750); // 寬度加大 100，高度微調
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
 
-            tabControl = new TabControl { Dock = DockStyle.Top, Height = 580 };
+            tabControl = new TabControl { Dock = DockStyle.Top, Height = 630 };
 
             foreach (var cat in dbSettings.Categories)
             {
@@ -37,7 +37,7 @@ namespace FormCrawlerApp
 
             Button btnSave = new Button {
                 Text = "💾 儲存所有資料庫設定",
-                Location = new Point(130, 600), Size = new Size(380, 45),
+                Location = new Point(180, 650), Size = new Size(380, 45),
                 BackColor = Color.LightSteelBlue, Cursor = Cursors.Hand
             };
             btnSave.Click += (s, e) => {
@@ -53,50 +53,71 @@ namespace FormCrawlerApp
         private void BuildCategoryPanel(TabPage page, CategoryDbSetting config)
         {
             int y = 15;
+            int labelX = 20;
+            int controlX = 180; // 統一將控制項往右推，避免蓋到文字
 
-            // 1. 下拉選單：是否寫入
-            Label lblEnable = new Label { Text = "是否寫入此類別：", Location = new Point(20, y), AutoSize = true };
-            ComboBox cmbEnable = new ComboBox { Location = new Point(150, y), DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
+            // 1. 是否寫入
+            Label lblEnable = new Label { Text = "是否寫入此類別：", Location = new Point(labelX, y), AutoSize = true };
+            ComboBox cmbEnable = new ComboBox { Location = new Point(controlX, y), DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
             cmbEnable.Items.AddRange(new[] { "寫入", "不寫入" });
             cmbEnable.SelectedIndex = config.IsEnabled ? 0 : 1;
             cmbEnable.SelectedIndexChanged += (s, e) => { config.IsEnabled = cmbEnable.SelectedIndex == 0; };
             page.Controls.AddRange(new Control[] { lblEnable, cmbEnable });
             y += 40;
 
-            // 2. 選擇 SQLite 檔案
-            Label lblDb = new Label { Text = "SQLite資料庫：", Location = new Point(20, y), AutoSize = true };
-            TextBox txtDb = new TextBox { Text = config.DbFilePath, Location = new Point(150, y), Width = 300, ReadOnly = true };
-            Button btnDb = new Button { Text = "瀏覽", Location = new Point(460, y-1), Width = 70 };
-            page.Controls.AddRange(new Control[] { lblDb, txtDb, btnDb });
+            // 2. 寫入主資料庫
+            Label lblDb = new Label { Text = "寫入主庫(SQLite)：", Location = new Point(labelX, y), AutoSize = true };
+            TextBox txtDb = new TextBox { Text = config.DbFilePath, Location = new Point(controlX, y), Width = 380, ReadOnly = true };
+            Button btnDbBrowse = new Button { Text = "瀏覽", Location = new Point(570, y - 1), Width = 60, Cursor = Cursors.Hand };
+            Button btnDbLoad = new Button { Text = "讀取", Location = new Point(640, y - 1), Width = 60, Cursor = Cursors.Hand, BackColor = Color.PaleGreen };
+            page.Controls.AddRange(new Control[] { lblDb, txtDb, btnDbBrowse, btnDbLoad });
             y += 40;
 
-            // UI 控制項宣告
-            ComboBox cmbTable = new ComboBox { Location = new Point(150, y), Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
-            ComboBox cmbExTable = new ComboBox { Location = new Point(150, y + 40), Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
-            ComboBox cmbExCol = new ComboBox { Location = new Point(300, y + 40), Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
-            List<ComboBox> colMappingCmbs = new List<ComboBox>(); // 存放9個欄位的下拉選單
+            // 3. 主資料表
+            ComboBox cmbTable = new ComboBox { Location = new Point(controlX, y), Width = 380, DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblTable = new Label { Text = "寫入主資料表：", Location = new Point(labelX, y), AutoSize = true };
+            page.Controls.AddRange(new Control[] { lblTable, cmbTable });
+            y += 40;
 
-            // 建立 9 個對應欄位的 UI
-            Panel mappingPanel = new Panel { Location = new Point(20, y + 80), Size = new Size(580, 320), BorderStyle = BorderStyle.FixedSingle };
+            // 4. 獨立排除資料庫
+            Label lblExDb = new Label { Text = "排除清單(SQLite)：", Location = new Point(labelX, y), AutoSize = true, ForeColor = Color.Brown };
+            TextBox txtExDb = new TextBox { Text = config.ExcludeDbFilePath, Location = new Point(controlX, y), Width = 380, ReadOnly = true };
+            Button btnExDbBrowse = new Button { Text = "瀏覽", Location = new Point(570, y - 1), Width = 60, Cursor = Cursors.Hand };
+            Button btnExDbLoad = new Button { Text = "讀取", Location = new Point(640, y - 1), Width = 60, Cursor = Cursors.Hand, BackColor = Color.LightYellow };
+            page.Controls.AddRange(new Control[] { lblExDb, txtExDb, btnExDbBrowse, btnExDbLoad });
+            y += 40;
+
+            // 5. 排除資料表與欄位
+            Label lblEx = new Label { Text = "排除資料表/欄位：", Location = new Point(labelX, y), AutoSize = true, ForeColor = Color.Brown };
+            ComboBox cmbExTable = new ComboBox { Location = new Point(controlX, y), Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+            ComboBox cmbExCol = new ComboBox { Location = new Point(380, y), Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+            page.Controls.AddRange(new Control[] { lblEx, cmbExTable, cmbExCol });
+            y += 50;
+
+            // 6. 爬蟲欄位對應 Panel
+            List<ComboBox> colMappingCmbs = new List<ComboBox>();
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(680, 320), BorderStyle = BorderStyle.FixedSingle };
             int my = 10;
             foreach (var field in scrapeHeaders)
             {
                 Label lblF = new Label { Text = $"爬蟲 [{field}] 寫入：", Location = new Point(10, my+3), AutoSize = true, ForeColor = Color.DarkBlue };
-                ComboBox cmbF = new ComboBox { Location = new Point(180, my), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
+                ComboBox cmbF = new ComboBox { Location = new Point(180, my), Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
                 
-                // 恢復已儲存的設定值
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
-                if (existMap != null) cmbF.Tag = existMap.DbColumn; // 暫存起來等有選項時綁定
+                if (existMap != null) cmbF.Tag = existMap.DbColumn; 
 
                 colMappingCmbs.Add(cmbF);
                 mappingPanel.Controls.AddRange(new Control[] { lblF, cmbF });
                 my += 33;
             }
+            page.Controls.Add(mappingPanel);
 
-            // 更新所有欄位下拉選單的副程式
+            // ====== 邏輯事件綁定 ======
+
+            // 主資料庫更新欄位下拉選項
             Action<string> UpdateColumnLists = (tableName) => {
                 var cols = App_Database.GetColumns(txtDb.Text, tableName);
-                cols.Insert(0, ""); // 第一個為空代表不對應
+                cols.Insert(0, ""); 
                 for (int i = 0; i < scrapeHeaders.Length; i++) {
                     var cb = colMappingCmbs[i];
                     cb.Items.Clear();
@@ -104,7 +125,6 @@ namespace FormCrawlerApp
                     string targetStr = cb.Tag?.ToString() ?? "";
                     cb.SelectedIndex = cols.Contains(targetStr) ? cols.IndexOf(targetStr) : 0;
                     
-                    // 綁定變更事件即時存入 config
                     int indexCopy = i;
                     cb.SelectedIndexChanged += (s, e) => {
                         var map = config.Mappings.FirstOrDefault(m => m.ScrapedField == scrapeHeaders[indexCopy]);
@@ -115,52 +135,56 @@ namespace FormCrawlerApp
                 }
             };
 
-            // 載入資料表的副程式
-            Action LoadTables = () => {
+            // 讀取主資料庫表單
+            Action LoadMainTables = () => {
                 var tables = App_Database.GetTables(txtDb.Text);
                 tables.Insert(0, "");
-                
                 cmbTable.Items.Clear(); cmbTable.Items.AddRange(tables.ToArray());
-                cmbExTable.Items.Clear(); cmbExTable.Items.AddRange(tables.ToArray());
-
                 if (tables.Contains(config.TargetTable)) cmbTable.SelectedIndex = tables.IndexOf(config.TargetTable);
+            };
+
+            // 讀取排除資料庫表單
+            Action LoadExcludeTables = () => {
+                var tables = App_Database.GetTables(txtExDb.Text);
+                tables.Insert(0, "");
+                cmbExTable.Items.Clear(); cmbExTable.Items.AddRange(tables.ToArray());
                 if (tables.Contains(config.ExcludeTable)) cmbExTable.SelectedIndex = tables.IndexOf(config.ExcludeTable);
             };
 
-            btnDb.Click += (s, e) => {
-                using (OpenFileDialog ofd = new OpenFileDialog { Filter = "SQLite 檔案|*.sqlite;*.db3;*.db|所有檔案|*.*" }) {
-                    if (ofd.ShowDialog() == DialogResult.OK) {
-                        txtDb.Text = config.DbFilePath = ofd.FileName;
-                        LoadTables();
-                    }
+            btnDbBrowse.Click += (s, e) => {
+                using (OpenFileDialog ofd = new OpenFileDialog { Filter = "SQLite|*.sqlite;*.db3;*.db|所有|*.*" }) {
+                    if (ofd.ShowDialog() == DialogResult.OK) { txtDb.Text = config.DbFilePath = ofd.FileName; }
                 }
             };
 
-            // 3. 主資料表選擇
-            Label lblTable = new Label { Text = "寫入主資料表：", Location = new Point(20, y), AutoSize = true };
+            btnDbLoad.Click += (s, e) => { LoadMainTables(); MessageBox.Show("主資料庫架構讀取完成。"); };
+
             cmbTable.SelectedIndexChanged += (s, e) => {
                 config.TargetTable = cmbTable.SelectedItem?.ToString() ?? "";
                 UpdateColumnLists(config.TargetTable);
             };
-            page.Controls.AddRange(new Control[] { lblTable, cmbTable });
-            y += 40;
 
-            // 4. 排除清單設定
-            Label lblEx = new Label { Text = "排除寫入比對：", Location = new Point(20, y), AutoSize = true };
+            btnExDbBrowse.Click += (s, e) => {
+                using (OpenFileDialog ofd = new OpenFileDialog { Filter = "SQLite|*.sqlite;*.db3;*.db|所有|*.*" }) {
+                    if (ofd.ShowDialog() == DialogResult.OK) { txtExDb.Text = config.ExcludeDbFilePath = ofd.FileName; }
+                }
+            };
+
+            btnExDbLoad.Click += (s, e) => { LoadExcludeTables(); MessageBox.Show("排除清單庫架構讀取完成。"); };
+
             cmbExTable.SelectedIndexChanged += (s, e) => {
                 config.ExcludeTable = cmbExTable.SelectedItem?.ToString() ?? "";
-                var exCols = App_Database.GetColumns(txtDb.Text, config.ExcludeTable);
+                var exCols = App_Database.GetColumns(txtExDb.Text, config.ExcludeTable);
                 exCols.Insert(0, "");
                 cmbExCol.Items.Clear(); cmbExCol.Items.AddRange(exCols.ToArray());
                 if (exCols.Contains(config.ExcludeColumn)) cmbExCol.SelectedIndex = exCols.IndexOf(config.ExcludeColumn);
             };
+            
             cmbExCol.SelectedIndexChanged += (s, e) => { config.ExcludeColumn = cmbExCol.SelectedItem?.ToString() ?? ""; };
-            page.Controls.AddRange(new Control[] { lblEx, cmbExTable, cmbExCol });
 
-            // 載入初始畫面資料
-            if (!string.IsNullOrEmpty(txtDb.Text)) LoadTables();
-
-            page.Controls.Add(mappingPanel);
+            // 初始載入（如果有預設檔）
+            if (!string.IsNullOrEmpty(txtDb.Text)) LoadMainTables();
+            if (!string.IsNullOrEmpty(txtExDb.Text)) LoadExcludeTables();
         }
     }
 }
