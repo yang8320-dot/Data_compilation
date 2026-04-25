@@ -8,7 +8,6 @@ namespace FormCrawlerApp
 {
     public class App_Database
     {
-        // 取得 SQLite 指定檔案內的所有 Table 名稱
         public static List<string> GetTables(string dbPath)
         {
             var tables = new List<string>();
@@ -25,7 +24,6 @@ namespace FormCrawlerApp
             return tables;
         }
 
-        // 取得 SQLite 指定 Table 內的所有欄位名稱
         public static List<string> GetColumns(string dbPath, string tableName)
         {
             var cols = new List<string>();
@@ -42,7 +40,6 @@ namespace FormCrawlerApp
             return cols;
         }
 
-        // 核心邏輯：執行寫入資料庫(包含排除檢查、取代與新增)
         public void ProcessCategoryData(CategoryDbSetting config, List<string[]> records)
         {
             if (!config.IsEnabled || string.IsNullOrEmpty(config.DbFilePath) || !File.Exists(config.DbFilePath) || string.IsNullOrEmpty(config.TargetTable))
@@ -50,9 +47,8 @@ namespace FormCrawlerApp
 
             string[] scrapeHeaders = { "表單單號", "表單主題", "狀態", "存檔", "承辦人", "目前處理者", "申請時間", "修改時間", "網址" };
 
-            // 找出 [表單單號] 在資料庫設定中對應的欄位名 (作為辨識鍵值 Key)
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
-            if (string.IsNullOrEmpty(keyDbColumn)) return; // 沒對應單號無法進行 Update/Exclude，跳過
+            if (string.IsNullOrEmpty(keyDbColumn)) return;
 
             using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;"))
             {
@@ -61,21 +57,31 @@ namespace FormCrawlerApp
                 {
                     foreach (var row in records)
                     {
-                        string formNo = row[0]; // row[0] 必定是表單單號
+                        string formNo = row[0]; 
                         if (string.IsNullOrEmpty(formNo)) continue;
 
-                        // 1. 檢查排除清單 (如果有設定)
-                        if (!string.IsNullOrEmpty(config.ExcludeTable) && !string.IsNullOrEmpty(config.ExcludeColumn))
+                        // 1. 檢查獨立的排除清單資料庫
+                        bool isExcluded = false;
+                        if (!string.IsNullOrEmpty(config.ExcludeDbFilePath) && File.Exists(config.ExcludeDbFilePath) &&
+                            !string.IsNullOrEmpty(config.ExcludeTable) && !string.IsNullOrEmpty(config.ExcludeColumn))
                         {
-                            using (var cmdCheck = new SQLiteCommand($"SELECT COUNT(1) FROM {config.ExcludeTable} WHERE {config.ExcludeColumn} = @no", conn))
-                            {
-                                cmdCheck.Parameters.AddWithValue("@no", formNo);
-                                long exCount = (long)cmdCheck.ExecuteScalar();
-                                if (exCount > 0) continue; // 存在於排除清單，跳過此筆
-                            }
+                            try {
+                                // 連線到獨立的排除清單 SQLite
+                                using (var exConn = new SQLiteConnection($"Data Source={config.ExcludeDbFilePath};Version=3;"))
+                                {
+                                    exConn.Open();
+                                    using (var cmdCheck = new SQLiteCommand($"SELECT COUNT(1) FROM {config.ExcludeTable} WHERE {config.ExcludeColumn} = @no", exConn))
+                                    {
+                                        cmdCheck.Parameters.AddWithValue("@no", formNo);
+                                        long exCount = (long)cmdCheck.ExecuteScalar();
+                                        if (exCount > 0) isExcluded = true;
+                                    }
+                                }
+                            } catch { /* 忽略連線失敗 */ }
                         }
+                        
+                        if (isExcluded) continue; // 存在於獨立排除清單，跳過此筆寫入
 
-                        // 準備可寫入的對應欄位資料
                         var insertCols = new List<string>();
                         var insertParams = new List<string>();
                         var updateSets = new List<string>();
@@ -91,16 +97,15 @@ namespace FormCrawlerApp
                                 
                                 insertCols.Add(dbCol);
                                 insertParams.Add(pName);
-                                // Key值(表單單號)不更新自己
                                 if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
                                 
                                 parameters.Add(pName, row[i]);
                             }
                         }
 
-                        if (insertCols.Count == 0) continue; // 什麼都沒設定
+                        if (insertCols.Count == 0) continue;
 
-                        // 2. 檢查主表是否已存在該筆單號
+                        // 2. 檢查主表是否已存在
                         bool exists = false;
                         using (var cmdExist = new SQLiteCommand($"SELECT COUNT(1) FROM {config.TargetTable} WHERE {keyDbColumn} = @key", conn))
                         {
@@ -108,7 +113,7 @@ namespace FormCrawlerApp
                             exists = (long)cmdExist.ExecuteScalar() > 0;
                         }
 
-                        // 3. 執行 Update (取代) 或 Insert (新增)
+                        // 3. 執行 Update 或 Insert
                         string sql = "";
                         if (exists && updateSets.Count > 0)
                         {
