@@ -43,11 +43,14 @@ namespace FormCrawlerApp
     {
         public string CategoryName { get; set; } = "";
         public bool IsEnabled { get; set; } = false;
-        public string DbFilePath { get; set; } = "";
         
+        // 寫入主資料庫設定
+        public string DbFilePath { get; set; } = "";
         public string TargetTable { get; set; } = "";
         public List<FieldMapping> Mappings { get; set; } = new List<FieldMapping>();
         
+        // 獨立的排除清單資料庫設定
+        public string ExcludeDbFilePath { get; set; } = ""; 
         public string ExcludeTable { get; set; } = "";
         public string ExcludeColumn { get; set; } = "";
     }
