@@ -60,27 +60,11 @@ namespace FormCrawlerApp
                         string formNo = row[0]; 
                         if (string.IsNullOrEmpty(formNo)) continue;
 
-                        // 1. 檢查獨立的排除清單資料庫
-                        bool isExcluded = false;
-                        if (!string.IsNullOrEmpty(config.ExcludeDbFilePath) && File.Exists(config.ExcludeDbFilePath) &&
-                            !string.IsNullOrEmpty(config.ExcludeTable) && !string.IsNullOrEmpty(config.ExcludeColumn))
+                        // 1. 檢查自訂黑名單，若清單內有此表單單號，則略過不寫入
+                        if (config.ExcludeFormNumbers != null && config.ExcludeFormNumbers.Contains(formNo))
                         {
-                            try {
-                                // 連線到獨立的排除清單 SQLite
-                                using (var exConn = new SQLiteConnection($"Data Source={config.ExcludeDbFilePath};Version=3;"))
-                                {
-                                    exConn.Open();
-                                    using (var cmdCheck = new SQLiteCommand($"SELECT COUNT(1) FROM {config.ExcludeTable} WHERE {config.ExcludeColumn} = @no", exConn))
-                                    {
-                                        cmdCheck.Parameters.AddWithValue("@no", formNo);
-                                        long exCount = (long)cmdCheck.ExecuteScalar();
-                                        if (exCount > 0) isExcluded = true;
-                                    }
-                                }
-                            } catch { /* 忽略連線失敗 */ }
+                            continue;
                         }
-                        
-                        if (isExcluded) continue; // 存在於獨立排除清單，跳過此筆寫入
 
                         var insertCols = new List<string>();
                         var insertParams = new List<string>();
