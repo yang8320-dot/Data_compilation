@@ -35,13 +35,11 @@ namespace FormCrawlerApp
             InitializeUI();
         }
 
-        // 強制鎖定為程式執行目錄下的 ExcelExport 資料夾
         private string GetExportPath()
         {
             return Path.Combine(Application.StartupPath, "ExcelExport");
         }
 
-        // 清空 Excel 資料夾
         private void CleanExcelFolder(string targetPath)
         {
             if (Directory.Exists(targetPath))
@@ -62,7 +60,7 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "經手表單自動化工具";
-            this.Size = new Size(650, 500); 
+            this.Size = new Size(800, 500); 
             this.StartPosition = FormStartPosition.CenterScreen;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
@@ -114,7 +112,7 @@ namespace FormCrawlerApp
             if (settings.CrawlUrls.Count == 0) { MessageBox.Show("請先設定爬蟲網址清單。"); return; }
 
             string exportDir = GetExportPath();
-            CleanExcelFolder(exportDir); // 每次執行前清空資料夾
+            CleanExcelFolder(exportDir); 
 
             try {
                 UIState(false, "系統連線中：正在自動檢查登入狀態...");
@@ -146,7 +144,8 @@ namespace FormCrawlerApp
                 foreach (var kw in targetKeywords) categorizedData[kw] = new List<string[]>();
                 
                 foreach (var row in allData) {
-                    string formNo = row[0], subject = row[1];
+                    // 主題變成了索引 2
+                    string formNo = row[0], subject = row[2];
                     bool matched = false;
                     foreach (var kw in targetKeywords) {
                         if (formNo.Contains(kw) || subject.Contains(kw)) {
@@ -174,11 +173,11 @@ namespace FormCrawlerApp
                         List<string> urlsToSave = new List<string>();
                         foreach(var row in kvp.Value)
                         {
-                            urlsToSave.Add($"{row[0]}|{row[1]}|{row[8]}");
+                            // 儲存格式: 單號(0) | 主題(2) | 網址(10)
+                            urlsToSave.Add($"{row[0]}|{row[2]}|{row[10]}");
                         }
                         File.WriteAllLines(txtPath, urlsToSave);
 
-                        // === 新增：執行資料庫寫入邏輯 ===
                         var dbConfig = dbSettings.Categories.FirstOrDefault(c => c.CategoryName == kvp.Key);
                         if (dbConfig != null && dbConfig.IsEnabled)
                         {
