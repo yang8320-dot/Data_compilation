@@ -91,7 +91,7 @@ namespace FormCrawlerApp
 
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
             // 面板高度加高為 400
-            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(600, 400), BorderStyle = BorderStyle.FixedSingle };
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(680, 400), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             foreach (var field in scrapeHeaders)
             {
@@ -107,9 +107,9 @@ namespace FormCrawlerApp
             }
             page.Controls.Add(mappingPanel);
 
-            Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(650, 225), AutoSize = true, ForeColor = Color.Brown };
+            Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(730, 145), AutoSize = true, ForeColor = Color.Brown };
             TextBox txtExclude = new TextBox {
-                Location = new Point(650, 190),
+                Location = new Point(730, 190),
                 Size = new Size(220, 370), // 黑名單文字框同步加高
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
