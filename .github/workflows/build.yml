@@ -1,4 +1,4 @@
-name: 自動打包免安裝壓縮檔
+name: 自動打包為 Library 分層結構
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
       with:
         dotnet-version: '8.0.x' 
 
-    - name: 自動還原套件並打包所有元件庫
+    - name: 自動還原套件並編譯專案
       run: |
         $csproj = Get-ChildItem -Filter *.csproj -Recurse | Select-Object -First 1
         if ($csproj) {
@@ -28,22 +28,52 @@ jobs:
         }
       shell: pwsh
 
-    - name: 壓縮發布資料夾 (確保 SQLite 核心檔案不遺失)
+    - name: 重新整理為 Library 目錄結構並打包
       run: |
-        $exe = Get-ChildItem -Filter FormCrawlerApp.exe -Recurse | Where-Object { $_.DirectoryName -match "bin\\Release" } | Select-Object -First 1
-        if ($exe) {
-            $releaseDir = $exe.DirectoryName
-            Write-Host "成功找到發布資料夾：$releaseDir"
-            # 將整個 Release 目錄打包成 ZIP，這樣 x86 和 x64 的 SQLite 檔案就會跟著保留
-            Compress-Archive -Path "$releaseDir\*" -DestinationPath .\FormCrawlerApp_Release.zip
-        } else {
+        $exePath = Get-ChildItem -Filter FormCrawlerApp.exe -Recurse | Where-Object { $_.DirectoryName -match "bin\\Release" } | Select-Object -First 1
+        if (!$exePath) {
             Write-Error "找不到編譯後的 .exe 檔案！"
             exit 1
         }
+        
+        $releaseDir = $exePath.DirectoryName
+        $packDir = ".\FinalPackage"
+        $libDir = "$packDir\Library"
+        
+        # 建立外層與 Library 資料夾
+        New-Item -ItemType Directory -Force -Path $libDir
+        
+        # 1. 移動執行檔到外層
+        Copy-Item "$releaseDir\FormCrawlerApp.exe" -Destination $packDir
+        
+        # 2. 移動所有 .dll 依賴檔到 Library 資料夾
+        Get-ChildItem -Path $releaseDir -Filter *.dll | ForEach-Object {
+            Copy-Item $_.FullName -Destination $libDir
+        }
+        
+        # 3. 移動 SQLite x86/x64 底層資料夾到 Library
+        if (Test-Path "$releaseDir\x86") { Copy-Item -Recurse "$releaseDir\x86" -Destination $libDir }
+        if (Test-Path "$releaseDir\x64") { Copy-Item -Recurse "$releaseDir\x64" -Destination $libDir }
+        
+        # 4. 產生 .config 檔案，讓主程式知道要去 Library 找元件
+        $configContent = @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <runtime>
+            <assemblyBinding xmlns="urn:schemas-microsoft-com:asm.v1">
+              <probing privatePath="Library" />
+            </assemblyBinding>
+          </runtime>
+        </configuration>
+        "@
+        Set-Content -Path "$packDir\FormCrawlerApp.exe.config" -Value $configContent -Encoding UTF8
+        
+        # 打包成 ZIP
+        Compress-Archive -Path "$packDir\*" -DestinationPath .\FormCrawlerApp_Release.zip
       shell: pwsh
 
     - name: 將 ZIP 壓縮檔上傳供下載
       uses: actions/upload-artifact@v4
       with:
-        name: FormCrawlerApp-Portable-ZIP
+        name: FormCrawlerApp-Clean-Structure
         path: .\FormCrawlerApp_Release.zip
