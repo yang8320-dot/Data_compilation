@@ -10,7 +10,8 @@ namespace FormCrawlerApp
     {
         private App_DbSettings dbSettings;
         private TabControl tabControl;
-        private string[] scrapeHeaders = { "表單單號", "表單主題", "狀態", "存檔", "承辦人", "目前處理者", "申請時間", "修改時間", "網址" };
+        // 更新 UI 為 11 個欄位
+        private string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
 
         private Dictionary<CategoryDbSetting, TextBox> excludeTextBoxes = new Dictionary<CategoryDbSetting, TextBox>();
 
@@ -23,12 +24,13 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            this.Size = new Size(1000, 750); 
+            // 高度加高至 820，容納更多欄位
+            this.Size = new Size(1000, 820); 
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
 
-            tabControl = new TabControl { Dock = DockStyle.Top, Height = 630 };
+            tabControl = new TabControl { Dock = DockStyle.Top, Height = 700 };
 
             foreach (var cat in dbSettings.Categories)
             {
@@ -39,7 +41,7 @@ namespace FormCrawlerApp
 
             Button btnSave = new Button {
                 Text = "💾 儲存所有資料庫設定",
-                Location = new Point(310, 650), Size = new Size(380, 45),
+                Location = new Point(310, 720), Size = new Size(380, 45),
                 BackColor = Color.LightSteelBlue, Cursor = Cursors.Hand
             };
             btnSave.Click += (s, e) => {
@@ -65,7 +67,6 @@ namespace FormCrawlerApp
             int labelX = 20;
             int controlX = 180; 
 
-            // 是否寫入
             Label lblEnable = new Label { Text = "是否寫入此類別：", Location = new Point(labelX, y), AutoSize = true };
             ComboBox cmbEnable = new ComboBox { Location = new Point(controlX, y), DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
             cmbEnable.Items.AddRange(new[] { "寫入", "不寫入" });
@@ -74,7 +75,6 @@ namespace FormCrawlerApp
             page.Controls.AddRange(new Control[] { lblEnable, cmbEnable });
             y += 45;
 
-            // 寫入主資料庫
             Label lblDb = new Label { Text = "寫入主庫(SQLite)：", Location = new Point(labelX, y+5), AutoSize = true };
             TextBox txtDb = new TextBox { Text = config.DbFilePath, Location = new Point(controlX, y), Width = 380, ReadOnly = true };
             
@@ -84,23 +84,18 @@ namespace FormCrawlerApp
             page.Controls.AddRange(new Control[] { lblDb, txtDb, btnDbBrowse, btnDbLoad });
             y += 45;
 
-            // 主資料表
             ComboBox cmbTable = new ComboBox { Location = new Point(controlX, y), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList };
             Label lblTable = new Label { Text = "寫入主資料表：", Location = new Point(labelX, y+3), AutoSize = true };
             page.Controls.AddRange(new Control[] { lblTable, cmbTable });
             y += 50;
 
-            // 左側：爬蟲欄位對應 Panel
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
-            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(680, 330), BorderStyle = BorderStyle.FixedSingle };
+            // 面板高度加高為 400
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(680, 400), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             foreach (var field in scrapeHeaders)
             {
                 Label lblF = new Label { Text = $"爬蟲 [{field}] 寫入：", Location = new Point(15, my+4), AutoSize = true, ForeColor = Color.DarkBlue };
-                
-                // ！！！修改點！！！
-                // Location.X 從 270 往左移至 220
-                // Width 從 350 縮減至 300
                 ComboBox cmbF = new ComboBox { Location = new Point(220, my), Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
                 
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
@@ -108,15 +103,14 @@ namespace FormCrawlerApp
 
                 colMappingCmbs.Add(cmbF);
                 mappingPanel.Controls.AddRange(new Control[] { lblF, cmbF });
-                my += 34; 
+                my += 33; 
             }
             page.Controls.Add(mappingPanel);
 
-            // 右側：排除單號清單 TextBox
             Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(730, 145), AutoSize = true, ForeColor = Color.Brown };
             TextBox txtExclude = new TextBox {
                 Location = new Point(730, 190),
-                Size = new Size(220, 275), 
+                Size = new Size(220, 370), // 黑名單文字框同步加高
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 WordWrap = false
@@ -131,7 +125,6 @@ namespace FormCrawlerApp
             page.Controls.Add(lblExclude);
             page.Controls.Add(txtExclude);
 
-            // ====== 邏輯事件綁定 ======
             Action<string> UpdateColumnLists = (tableName) => {
                 try {
                     var cols = App_Database.GetColumns(txtDb.Text, tableName);
@@ -193,7 +186,7 @@ namespace FormCrawlerApp
             };
 
             if (!string.IsNullOrEmpty(txtDb.Text)) {
-                try { LoadMainTables(); } catch { /* 初始載入靜默失敗 */ }
+                try { LoadMainTables(); } catch { }
             }
         }
     }
