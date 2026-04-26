@@ -8,7 +8,6 @@ namespace FormCrawlerApp
 {
     public class App_Database
     {
-        // 取得 SQLite 所有 Table (拿掉空的 catch，讓錯誤可以顯示出來)
         public static List<string> GetTables(string dbPath)
         {
             var tables = new List<string>();
@@ -24,7 +23,6 @@ namespace FormCrawlerApp
             return tables;
         }
 
-        // 取得 SQLite 指定 Table 內的所有欄位名稱
         public static List<string> GetColumns(string dbPath, string tableName)
         {
             var cols = new List<string>();
@@ -45,7 +43,8 @@ namespace FormCrawlerApp
             if (!config.IsEnabled || string.IsNullOrEmpty(config.DbFilePath) || !File.Exists(config.DbFilePath) || string.IsNullOrEmpty(config.TargetTable))
                 return;
 
-            string[] scrapeHeaders = { "表單單號", "表單主題", "狀態", "存檔", "承辦人", "目前處理者", "申請時間", "修改時間", "網址" };
+            // 更新 11 個欄位
+            string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
 
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
             if (string.IsNullOrEmpty(keyDbColumn)) return;
@@ -60,7 +59,6 @@ namespace FormCrawlerApp
                         string formNo = row[0]; 
                         if (string.IsNullOrEmpty(formNo)) continue;
 
-                        // 檢查自訂黑名單，若清單內有此表單單號，則略過不寫入
                         if (config.ExcludeFormNumbers != null && config.ExcludeFormNumbers.Contains(formNo))
                         {
                             continue;
