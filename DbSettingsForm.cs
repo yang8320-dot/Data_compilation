@@ -10,7 +10,7 @@ namespace FormCrawlerApp
     {
         private App_DbSettings dbSettings;
         private TabControl tabControl;
-        // 更新 UI 為 11 個欄位
+        // 11 個欄位
         private string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
 
         private Dictionary<CategoryDbSetting, TextBox> excludeTextBoxes = new Dictionary<CategoryDbSetting, TextBox>();
@@ -24,7 +24,6 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            // 高度加高至 820，容納更多欄位
             this.Size = new Size(1000, 820); 
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
@@ -90,8 +89,8 @@ namespace FormCrawlerApp
             y += 50;
 
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
-            // 面板高度加高為 400
-            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(680, 400), BorderStyle = BorderStyle.FixedSingle };
+            // ❗ 左側面板寬度從 680 縮減至 600
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(600, 400), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             foreach (var field in scrapeHeaders)
             {
@@ -107,10 +106,13 @@ namespace FormCrawlerApp
             }
             page.Controls.Add(mappingPanel);
 
-            Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(730, 145), AutoSize = true, ForeColor = Color.Brown };
+            // ❗ 右側黑名單向左移 80 (從 730 變成 650) 
+            Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(650, 145), AutoSize = true, ForeColor = Color.Brown };
+            
+            // ❗ 右側黑名單寬度增加 80 (從 220 變成 300)
             TextBox txtExclude = new TextBox {
-                Location = new Point(730, 190),
-                Size = new Size(220, 370), // 黑名單文字框同步加高
+                Location = new Point(650, 190),
+                Size = new Size(300, 370), 
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 WordWrap = false
