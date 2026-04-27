@@ -11,6 +11,9 @@ namespace FormCrawlerApp
         private App_DbSettings dbSettings;
         private TabControl tabControl;
         private string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
+        
+        // 內部用來記錄 3 個 v 欄位的假名
+        private string[] vFields = { "v_1", "v_2", "v_3" };
 
         private Dictionary<CategoryDbSetting, TextBox> excludeTextBoxes = new Dictionary<CategoryDbSetting, TextBox>();
 
@@ -88,14 +91,15 @@ namespace FormCrawlerApp
             y += 50;
 
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
+            List<ComboBox> vMappingCmbs = new List<ComboBox>(); // 用來存放 3 個 v 下拉選單
             
-            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 400), BorderStyle = BorderStyle.FixedSingle };
+            // 為了容納新的一行，把高度從 400 增加到 430
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 430), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
+            
             foreach (var field in scrapeHeaders)
             {
                 Label lblF = new Label { Text = $"[{field}] 寫入：", Location = new Point(15, my+4), AutoSize = true, ForeColor = Color.DarkBlue };
-                
-                // 【修改點】下拉選單往右移 10px (160 -> 170)，並縮減 10px 寬度 (270 -> 260) 避免超出邊界
                 ComboBox cmbF = new ComboBox { Location = new Point(170, my), Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
                 
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
@@ -104,6 +108,22 @@ namespace FormCrawlerApp
                 colMappingCmbs.Add(cmbF);
                 mappingPanel.Controls.AddRange(new Control[] { lblF, cmbF });
                 my += 33; 
+            }
+
+            // 【新增】：[v] 寫入 的 3 個下拉選單
+            Label lblV = new Label { Text = "[v] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkMagenta };
+            mappingPanel.Controls.Add(lblV);
+
+            for (int i = 0; i < 3; i++)
+            {
+                // 計算 3 個下拉選單的 X 座標 (170, 300, 430)，寬度設為 120
+                ComboBox cmbV = new ComboBox { Location = new Point(170 + (i * 130), my), Width = 120, DropDownStyle = ComboBoxStyle.DropDownList };
+                
+                var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[i]);
+                if (existMap != null) cmbV.Tag = existMap.DbColumn; 
+
+                vMappingCmbs.Add(cmbV);
+                mappingPanel.Controls.Add(cmbV);
             }
             page.Controls.Add(mappingPanel);
 
@@ -130,6 +150,8 @@ namespace FormCrawlerApp
                 try {
                     var cols = App_Database.GetColumns(txtDb.Text, tableName);
                     cols.Insert(0, ""); 
+                    
+                    // 1. 更新 11 個標準欄位
                     for (int i = 0; i < scrapeHeaders.Length; i++) {
                         var cb = colMappingCmbs[i];
                         cb.Items.Clear();
@@ -148,6 +170,27 @@ namespace FormCrawlerApp
                             cb.Tag = map.DbColumn;
                         }
                     }
+
+                    // 2. 更新 3 個 [v] 寫入欄位
+                    for (int i = 0; i < 3; i++) {
+                        var cbV = vMappingCmbs[i];
+                        cbV.Items.Clear();
+                        cbV.Items.AddRange(cols.ToArray());
+                        string targetStr = cbV.Tag?.ToString() ?? "";
+                        cbV.SelectedIndex = cols.Contains(targetStr) ? cols.IndexOf(targetStr) : 0;
+                        
+                        int indexCopy = i;
+                        cbV.SelectedIndexChanged -= CbV_SelectedIndexChanged;
+                        cbV.SelectedIndexChanged += CbV_SelectedIndexChanged;
+
+                        void CbV_SelectedIndexChanged(object sender, EventArgs e) {
+                            var map = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[indexCopy]);
+                            if (map == null) { map = new FieldMapping { ScrapedField = vFields[indexCopy] }; config.Mappings.Add(map); }
+                            map.DbColumn = cbV.SelectedItem?.ToString() ?? "";
+                            cbV.Tag = map.DbColumn;
+                        }
+                    }
+
                 } catch (Exception ex) {
                     MessageBox.Show("讀取欄位失敗：\n" + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
