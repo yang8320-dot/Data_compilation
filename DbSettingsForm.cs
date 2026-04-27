@@ -145,9 +145,9 @@ namespace FormCrawlerApp
 
             // 【修改點】3. 微調自訂字的欄位間距，不要遮蔽
             Label lblCustom = new Label { Text = "[自訂字] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkGreen };
-            TextBox txtCustom = new TextBox { Location = new Point(180, my), Width = 180, Text = config.CustomTextValue };
-            Label lblArrow = new Label { Text = "➔", Location = new Point(370, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
-            ComboBox cmbCustom = new ComboBox { Location = new Point(375, my), Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
+            TextBox txtCustom = new TextBox { Location = new Point(180, my), Width = 175, Text = config.CustomTextValue };
+            Label lblArrow = new Label { Text = "➔", Location = new Point(360, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
+            ComboBox cmbCustom = new ComboBox { Location = new Point(37, my), Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
             
             cbCustom = cmbCustom;
             var existCustomMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
