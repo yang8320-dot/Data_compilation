@@ -13,7 +13,8 @@ namespace FormCrawlerApp
             var tables = new List<string>();
             if (!File.Exists(dbPath)) throw new Exception("找不到指定的 SQLite 檔案！\n路徑：" + dbPath);
             
-            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;")) {
+            // 【修改點】加入 Pooling=False; 確保 using 結束後徹底釋放檔案鎖定
+            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;Pooling=False;")) {
                 conn.Open();
                 using (var cmd = new SQLiteCommand("SELECT name FROM sqlite_master WHERE type='table';", conn))
                 using (var reader = cmd.ExecuteReader()) {
@@ -28,7 +29,8 @@ namespace FormCrawlerApp
             var cols = new List<string>();
             if (!File.Exists(dbPath) || string.IsNullOrEmpty(tableName)) return cols;
             
-            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;")) {
+            // 【修改點】加入 Pooling=False;
+            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;Pooling=False;")) {
                 conn.Open();
                 using (var cmd = new SQLiteCommand($"PRAGMA table_info({tableName});", conn))
                 using (var reader = cmd.ExecuteReader()) {
@@ -47,8 +49,8 @@ namespace FormCrawlerApp
 
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
 
-            // 加入 Read Write=True; 避免預設唯讀
-            using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;Read Write=True;"))
+            // 【修改點】加入 Pooling=False;
+            using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;Read Write=True;Pooling=False;"))
             {
                 try 
                 {
@@ -56,10 +58,9 @@ namespace FormCrawlerApp
                 }
                 catch (SQLiteException ex)
                 {
-                    // 攔截並給予明確的權限錯誤提示
                     if (ex.ResultCode == SQLiteErrorCode.ReadOnly || ex.Message.ToLower().Contains("readonly"))
                     {
-                        throw new Exception($"\n請確認以下兩點：\n1. 該資料庫檔案是否被設定為「唯讀」。\n2. 是否有其他軟體 (例如 DB Browser for SQLite) 正在開啟並鎖定該檔案，請先關閉它！\n\n系統原始錯誤：{ex.Message}");
+                        throw new Exception($"\n請確認以下兩點：\n1. 該資料庫檔案是否被設定為「唯讀」。\n2. 是否有其他軟體 (例如 DB Browser) 正在開啟並鎖定該檔案，請先關閉它！\n\n系統原始錯誤：{ex.Message}");
                     }
                     throw;
                 }
@@ -81,7 +82,6 @@ namespace FormCrawlerApp
                         for (int i = 0; i < scrapeHeaders.Length; i++)
                         {
                             var mapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == scrapeHeaders[i]);
-                            // 即使沒有全選欄位，只要有選的就會納入
                             if (mapping != null && !string.IsNullOrEmpty(mapping.DbColumn))
                             {
                                 string pName = "@p" + i;
@@ -98,7 +98,6 @@ namespace FormCrawlerApp
                         if (insertCols.Count == 0) continue;
 
                         bool exists = false;
-                        // 如果沒有設定主鍵(表單單號)，就直接新增，不檢查重複
                         if (!string.IsNullOrEmpty(keyDbColumn))
                         {
                             using (var cmdExist = new SQLiteCommand($"SELECT COUNT(1) FROM {config.TargetTable} WHERE {keyDbColumn} = @key", conn))
@@ -130,7 +129,7 @@ namespace FormCrawlerApp
                     }
                     transaction.Commit();
                 }
-            }
+            } // <--- 由於 Pooling=False，執行到這裡時，底層的 .db 檔案鎖定會被完全拔除！
         }
     }
 }
