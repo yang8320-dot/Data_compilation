@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗。加入 Excel 自動清空資料夾與 SQLite 寫入邏輯。
+ * 檔案功能：應用程式主視窗。加入 Excel 自動清空資料夾、SQLite 寫入邏輯與直接呼叫 PDF API 下載。
  */
 using System;
 using System.Collections.Generic;
@@ -144,7 +144,6 @@ namespace FormCrawlerApp
                 foreach (var kw in targetKeywords) categorizedData[kw] = new List<string[]>();
                 
                 foreach (var row in allData) {
-                    // 主題變成了索引 2
                     string formNo = row[0], subject = row[2];
                     bool matched = false;
                     foreach (var kw in targetKeywords) {
@@ -223,6 +222,8 @@ namespace FormCrawlerApp
 
                 UIState(false, $"準備下載 {lines.Length} 份文件...");
                 Random rnd = new Random();
+                int successCount = 0;
+
                 for (int i = 0; i < lines.Length; i++)
                 {
                     var parts = lines[i].Split('|');
@@ -233,21 +234,10 @@ namespace FormCrawlerApp
                     string url = parts[2].Trim();
                     if (string.IsNullOrWhiteSpace(url)) continue;
 
-                    UIState(false, $"正在解析網頁 ({i + 1}/{lines.Length}): {formNo}");
-                    
-                    string viewerHtml = await network.GetHtmlAsync(url);
-                    string realPdfUrl = url;
-
-                    var fileMatch = System.Text.RegularExpressions.Regex.Match(viewerHtml, @"(?:file|href|src)\s*=\s*[""']?([^""'>\s]+\.pdf(?:[^""'>\s]*)?)[""']?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                    
-                    if (fileMatch.Success) 
-                    {
-                        realPdfUrl = System.Net.WebUtility.UrlDecode(fileMatch.Groups[1].Value);
-                    } 
-                    else 
-                    {
-                        realPdfUrl = url.Replace("print_frameset", "export_pdf").Replace("view_formsflow", "export_pdf");
-                    }
+                    // 【核心修正】EIP Plus 系統標準的 PDF 匯出 API，直接替換 Action 參數即可下載
+                    string realPdfUrl = url.Replace("print_frameset", "export_pdf")
+                                           .Replace("view_formsflow", "export_pdf")
+                                           .Replace("show_formsflow_list", "export_pdf");
 
                     if (realPdfUrl.StartsWith("/")) 
                     {
@@ -261,16 +251,47 @@ namespace FormCrawlerApp
                     string safeSubject = string.Concat(subject.Split(Path.GetInvalidFileNameChars()));
                     string savePath = Path.Combine(pdfDir, $"{formNo}_{safeSubject}.pdf");
                     
-                    UIState(false, $"正在下載實體檔案 ({i + 1}/{lines.Length}): {formNo}");
-                    await network.DownloadFileAsync(realPdfUrl, savePath);
+                    UIState(false, $"正在下載表單 PDF ({i + 1}/{lines.Length}): {formNo}");
+                    
+                    try 
+                    {
+                        await network.DownloadFileAsync(realPdfUrl, savePath);
 
+                        // 防呆驗證：檢查下載下來的檔案是不是真的 PDF (讀取表頭 %PDF)
+                        if (File.Exists(savePath))
+                        {
+                            byte[] buffer = new byte[4];
+                            using (FileStream fs = new FileStream(savePath, FileMode.Open, FileAccess.Read))
+                            {
+                                fs.Read(buffer, 0, 4);
+                            }
+                            string header = System.Text.Encoding.ASCII.GetString(buffer);
+                            
+                            if (header != "%PDF")
+                            {
+                                // 若下載到的不是 PDF (可能是登入過期跳轉到錯誤頁面)，將副檔名改為 html 方便人工除錯
+                                File.Move(savePath, savePath + "_Error.html");
+                            }
+                            else
+                            {
+                                successCount++;
+                            }
+                        }
+                    }
+                    catch (Exception dlEx)
+                    {
+                        // 單一檔案下載失敗不中斷整個迴圈
+                        System.Diagnostics.Debug.WriteLine($"下載失敗 {formNo}: {dlEx.Message}");
+                    }
+
+                    // 避免被伺服器阻擋，加入隨機延遲
                     if (i < lines.Length - 1)
                     {
-                        await Task.Delay(rnd.Next(1000, 2000));
+                        await Task.Delay(rnd.Next(1500, 3000));
                     }
                 }
 
-                UIState(true, $"✅ {selectedCat} 下載完成！\n已儲存於：{pdfDir}");
+                UIState(true, $"✅ {selectedCat} 下載完成！共成功下載 {successCount}/{lines.Length} 份。\n已儲存於：{pdfDir}");
             }
             catch (Exception ex)
             {
