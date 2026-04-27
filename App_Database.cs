@@ -44,7 +44,8 @@ namespace FormCrawlerApp
                 return;
 
             string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
-            string[] vFields = { "v_1", "v_2", "v_3" }; // 定義三個虛擬的 v 寫入來源
+            string[] vFields = { "v_1", "v_2", "v_3", "v_4" }; 
+            string customTextFieldName = "CustomText";
 
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
 
@@ -94,7 +95,7 @@ namespace FormCrawlerApp
                             }
                         }
 
-                        // 2. 處理 3 個 [v] 寫入欄位
+                        // 2. 處理 4 個 [v] 寫入欄位
                         for (int i = 0; i < vFields.Length; i++)
                         {
                             var mapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[i]);
@@ -107,9 +108,23 @@ namespace FormCrawlerApp
                                 insertParams.Add(pName);
                                 if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
                                 
-                                // 強制寫入固定字串 "v"
                                 parameters.Add(pName, "v");
                             }
+                        }
+
+                        // 3. 處理 [自訂文字] 寫入欄位
+                        var customMapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
+                        // 確保有選欄位，且使用者真的有填寫文字，才進行寫入
+                        if (customMapping != null && !string.IsNullOrEmpty(customMapping.DbColumn) && !string.IsNullOrEmpty(config.CustomTextValue))
+                        {
+                            string pName = "@custom_text_param";
+                            string dbCol = customMapping.DbColumn;
+
+                            insertCols.Add(dbCol);
+                            insertParams.Add(pName);
+                            if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
+
+                            parameters.Add(pName, config.CustomTextValue);
                         }
 
                         if (insertCols.Count == 0) continue;
