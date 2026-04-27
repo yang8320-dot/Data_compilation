@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml.Serialization;
@@ -10,7 +11,8 @@ namespace FormCrawlerApp
 
         public static App_DbSettings Load()
         {
-            string path = "DbMappingSettings.xml";
+            // 強制綁定絕對路徑
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DbMappingSettings.xml");
             if (!File.Exists(path)) return DefaultSettings();
             try {
                 using (FileStream fs = new FileStream(path, FileMode.Open)) {
@@ -22,7 +24,8 @@ namespace FormCrawlerApp
 
         public void Save()
         {
-            using (FileStream fs = new FileStream("DbMappingSettings.xml", FileMode.Create)) {
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DbMappingSettings.xml");
+            using (FileStream fs = new FileStream(path, FileMode.Create)) {
                 XmlSerializer xs = new XmlSerializer(typeof(App_DbSettings));
                 xs.Serialize(fs, this);
             }
@@ -48,7 +51,6 @@ namespace FormCrawlerApp
         public string TargetTable { get; set; } = "";
         public List<FieldMapping> Mappings { get; set; } = new List<FieldMapping>();
         
-        // 新增：使用者自訂的不寫入黑名單 (存表單單號)
         public List<string> ExcludeFormNumbers { get; set; } = new List<string>();
     }
 
