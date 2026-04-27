@@ -11,7 +11,6 @@ namespace FormCrawlerApp
 
         public static App_DbSettings Load()
         {
-            // 強制綁定絕對路徑
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DbMappingSettings.xml");
             if (!File.Exists(path)) return DefaultSettings();
             try {
@@ -52,6 +51,9 @@ namespace FormCrawlerApp
         public List<FieldMapping> Mappings { get; set; } = new List<FieldMapping>();
         
         public List<string> ExcludeFormNumbers { get; set; } = new List<string>();
+        
+        // 【新增】：用來儲存使用者自行輸入的文字
+        public string CustomTextValue { get; set; } = "";
     }
 
     public class FieldMapping
