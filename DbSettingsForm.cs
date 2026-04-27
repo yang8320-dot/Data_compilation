@@ -12,7 +12,6 @@ namespace FormCrawlerApp
         private TabControl tabControl;
         private string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
         
-        // 內部用來記錄 4 個 v 欄位和自訂文字的假名
         private string[] vFields = { "v_1", "v_2", "v_3", "v_4" };
         private string customTextFieldName = "CustomText";
 
@@ -28,12 +27,13 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            this.Size = new Size(970, 820); 
+            // 視窗高度稍微增加以容納更長的面板
+            this.Size = new Size(970, 850); 
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
 
-            tabControl = new TabControl { Dock = DockStyle.Top, Height = 700 };
+            tabControl = new TabControl { Dock = DockStyle.Top, Height = 730 };
 
             foreach (var cat in dbSettings.Categories)
             {
@@ -44,11 +44,10 @@ namespace FormCrawlerApp
 
             Button btnSave = new Button {
                 Text = "💾 儲存所有資料庫設定",
-                Location = new Point(295, 720), Size = new Size(380, 45),
+                Location = new Point(295, 750), Size = new Size(380, 45),
                 BackColor = Color.LightSteelBlue, Cursor = Cursors.Hand
             };
             btnSave.Click += (s, e) => {
-                // 儲存黑名單
                 foreach (var kvp in excludeTextBoxes)
                 {
                     kvp.Key.ExcludeFormNumbers = kvp.Value.Text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
@@ -56,7 +55,6 @@ namespace FormCrawlerApp
                                                                .Where(txt => !string.IsNullOrEmpty(txt))
                                                                .ToList();
                 }
-                // 儲存自訂文字
                 foreach (var kvp in customTextBoxes)
                 {
                     kvp.Key.CustomTextValue = kvp.Value.Text;
@@ -101,18 +99,17 @@ namespace FormCrawlerApp
 
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
             List<ComboBox> vMappingCmbs = new List<ComboBox>();
-            ComboBox cbCustom = new ComboBox(); // 自訂文字用的下拉選單
+            ComboBox cbCustom = new ComboBox(); 
             
-            // 為了塞入 2 行 v 以及 1 行自訂文字，高度增加到 500
-            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 500), BorderStyle = BorderStyle.FixedSingle };
+            // 【修改點】1. 面板高度增加到 510，解決下方被切掉的問題
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 510), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             
-            // 11 個標準欄位
             foreach (var field in scrapeHeaders)
             {
                 Label lblF = new Label { Text = $"[{field}] 寫入：", Location = new Point(15, my+4), AutoSize = true, ForeColor = Color.DarkBlue };
-                // 【修改點】再往右移 10px (變成 X=180)，寬度維持 260
-                ComboBox cmbF = new ComboBox { Location = new Point(180, my), Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
+                // 【修改點】2. 下拉選單寬度增加到 365，填滿右側的空白區域
+                ComboBox cmbF = new ComboBox { Location = new Point(180, my), Width = 365, DropDownStyle = ComboBoxStyle.DropDownList };
                 
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
                 if (existMap != null) cmbF.Tag = existMap.DbColumn; 
@@ -122,11 +119,12 @@ namespace FormCrawlerApp
                 my += 33; 
             }
 
-            // 【新增】第 1 行：v 欄位 1, 2
+            // 【修改點】v 欄位寬度跟著加長，填滿空間
             Label lblV1 = new Label { Text = "[v] 寫入(1,2)：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkMagenta };
             mappingPanel.Controls.Add(lblV1);
             for (int i = 0; i < 2; i++) {
-                ComboBox cmbV = new ComboBox { Location = new Point(180 + (i * 135), my), Width = 125, DropDownStyle = ComboBoxStyle.DropDownList };
+                // 寬度從 125 變成 175，間距拉寬
+                ComboBox cmbV = new ComboBox { Location = new Point(180 + (i * 190), my), Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[i]);
                 if (existMap != null) cmbV.Tag = existMap.DbColumn; 
                 vMappingCmbs.Add(cmbV);
@@ -134,11 +132,10 @@ namespace FormCrawlerApp
             }
             my += 33;
 
-            // 【新增】第 2 行：v 欄位 3, 4
             Label lblV2 = new Label { Text = "[v] 寫入(3,4)：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkMagenta };
             mappingPanel.Controls.Add(lblV2);
             for (int i = 2; i < 4; i++) {
-                ComboBox cmbV = new ComboBox { Location = new Point(180 + ((i - 2) * 135), my), Width = 125, DropDownStyle = ComboBoxStyle.DropDownList };
+                ComboBox cmbV = new ComboBox { Location = new Point(180 + ((i - 2) * 190), my), Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[i]);
                 if (existMap != null) cmbV.Tag = existMap.DbColumn; 
                 vMappingCmbs.Add(cmbV);
@@ -146,12 +143,13 @@ namespace FormCrawlerApp
             }
             my += 33;
 
-            // 【新增】第 3 行：自行 Key-in 文字與對應欄位
+            // 【修改點】3. 微調自訂字的欄位間距，不要遮蔽
             Label lblCustom = new Label { Text = "[自訂字] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkGreen };
-            TextBox txtCustom = new TextBox { Location = new Point(125, my), Width = 100, Text = config.CustomTextValue };
-            Label lblArrow = new Label { Text = "➔", Location = new Point(228, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
-            cbCustom = new ComboBox { Location = new Point(250, my), Width = 190, DropDownStyle = ComboBoxStyle.DropDownList };
+            TextBox txtCustom = new TextBox { Location = new Point(125, my), Width = 130, Text = config.CustomTextValue };
+            Label lblArrow = new Label { Text = "➔", Location = new Point(265, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
+            ComboBox cmbCustom = new ComboBox { Location = new Point(295, my), Width = 250, DropDownStyle = ComboBoxStyle.DropDownList };
             
+            cbCustom = cmbCustom;
             var existCustomMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
             if (existCustomMap != null) cbCustom.Tag = existCustomMap.DbColumn;
             
@@ -162,10 +160,10 @@ namespace FormCrawlerApp
 
             Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(600, 145), AutoSize = true, ForeColor = Color.Brown };
             
-            // 配合左方面板加長，黑名單文字框也同步加長
+            // 配合面板加長，黑名單文字框也同步加長
             TextBox txtExclude = new TextBox {
                 Location = new Point(600, 190),
-                Size = new Size(300, 470), 
+                Size = new Size(300, 480), 
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 WordWrap = false
@@ -185,7 +183,6 @@ namespace FormCrawlerApp
                     var cols = App_Database.GetColumns(txtDb.Text, tableName);
                     cols.Insert(0, ""); 
                     
-                    // 1. 更新 11 個標準欄位
                     for (int i = 0; i < scrapeHeaders.Length; i++) {
                         var cb = colMappingCmbs[i];
                         cb.Items.Clear(); cb.Items.AddRange(cols.ToArray());
@@ -203,7 +200,6 @@ namespace FormCrawlerApp
                         }
                     }
 
-                    // 2. 更新 4 個 [v] 寫入欄位
                     for (int i = 0; i < vFields.Length; i++) {
                         var cbV = vMappingCmbs[i];
                         cbV.Items.Clear(); cbV.Items.AddRange(cols.ToArray());
@@ -221,7 +217,6 @@ namespace FormCrawlerApp
                         }
                     }
 
-                    // 3. 更新 [自訂文字] 下拉選單
                     cbCustom.Items.Clear(); cbCustom.Items.AddRange(cols.ToArray());
                     string targetCustomStr = cbCustom.Tag?.ToString() ?? "";
                     cbCustom.SelectedIndex = cols.Contains(targetCustomStr) ? cols.IndexOf(targetCustomStr) : 0;
