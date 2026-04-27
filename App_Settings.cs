@@ -7,7 +7,8 @@ namespace FormCrawlerApp
 {
     public class App_Settings
     {
-        private readonly string filePath = "Settings.txt";
+        // 強制綁定絕對路徑，確保不管怎麼開啟都不會讀錯位置
+        private readonly string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Settings.txt");
 
         public string Username { get; set; } = "";
         public string Password { get; set; } = "";
