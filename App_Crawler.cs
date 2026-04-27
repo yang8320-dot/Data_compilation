@@ -79,8 +79,8 @@ namespace FormCrawlerApp
                                 link = "";
                             
                             link = link.Replace("/eipplus/eipplus/", "/eipplus/");
-                            // 【修改點】：將網址替換為 view_frameset (顯示在 Excel 裡的網址)
-                            link = link.Replace("print_frameset", "view_frameset").Replace("view_formsflow", "view_frameset");
+                            // 【修改點】統一將超連結替換為 view_formsflow
+                            link = link.Replace("print_frameset", "view_formsflow").Replace("view_frameset", "view_formsflow");
                         }
 
                         extractedData.Add(new string[] { formNo, category, subject, status, applicant, handler, currentProcessor, applyTime, modifyTime, expireTime, link });
