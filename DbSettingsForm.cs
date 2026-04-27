@@ -23,7 +23,6 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            // 【修改點】總寬度減去 30px (1000 -> 970)
             this.Size = new Size(970, 820); 
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
@@ -90,15 +89,14 @@ namespace FormCrawlerApp
 
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
             
-            // 【修改點】面板寬度減少 30px (600 -> 570)
             Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 400), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             foreach (var field in scrapeHeaders)
             {
-                // 【修改點】移除「爬蟲」二字
                 Label lblF = new Label { Text = $"[{field}] 寫入：", Location = new Point(15, my+4), AutoSize = true, ForeColor = Color.DarkBlue };
-                // 【修改點】下拉選單往左移，並縮減 30px 寬度 (300 -> 270)
-                ComboBox cmbF = new ComboBox { Location = new Point(160, my), Width = 270, DropDownStyle = ComboBoxStyle.DropDownList };
+                
+                // 【修改點】下拉選單往右移 10px (160 -> 170)，並縮減 10px 寬度 (270 -> 260) 避免超出邊界
+                ComboBox cmbF = new ComboBox { Location = new Point(170, my), Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
                 
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
                 if (existMap != null) cmbF.Tag = existMap.DbColumn; 
@@ -109,7 +107,6 @@ namespace FormCrawlerApp
             }
             page.Controls.Add(mappingPanel);
 
-            // 【修改點】黑名單區塊往左位移
             Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(600, 145), AutoSize = true, ForeColor = Color.Brown };
             
             TextBox txtExclude = new TextBox {
