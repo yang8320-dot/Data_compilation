@@ -147,7 +147,7 @@ namespace FormCrawlerApp
             Label lblCustom = new Label { Text = "[自訂字] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkGreen };
             TextBox txtCustom = new TextBox { Location = new Point(180, my), Width = 175, Text = config.CustomTextValue };
             Label lblArrow = new Label { Text = "➔", Location = new Point(360, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
-            ComboBox cmbCustom = new ComboBox { Location = new Point(37, my), Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
+            ComboBox cmbCustom = new ComboBox { Location = new Point(375, my), Width = 170, DropDownStyle = ComboBoxStyle.DropDownList };
             
             cbCustom = cmbCustom;
             var existCustomMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
