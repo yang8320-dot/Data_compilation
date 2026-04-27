@@ -1,5 +1,5 @@
 /*
- * 檔案功能：應用程式主視窗。加入 Excel 自動清空資料夾、SQLite 寫入邏輯與直接呼叫 PDF API 下載。
+ * 檔案功能：應用程式主視窗。支援視窗自動縮放、滑鼠選取狀態列、自訂 PDF 下載網址參數。
  */
 using System;
 using System.Collections.Generic;
@@ -16,7 +16,7 @@ namespace FormCrawlerApp
     {
         private Button btnExecute, btnSettings, btnDbSettings, btnOpenFolder, btnDownloadPdf;
         private ComboBox cmbCategories;
-        private Label lblStatus;
+        private TextBox txtStatus; // 改用 TextBox 讓文字可以被選取
         private App_Settings settings;
         private App_DbSettings dbSettings;
         private App_Network network;
@@ -61,6 +61,7 @@ namespace FormCrawlerApp
         {
             this.Text = "經手表單自動化工具";
             this.Size = new Size(550, 500); 
+            this.MinimumSize = new Size(550, 500); // 避免視窗縮太小
             this.StartPosition = FormStartPosition.CenterScreen;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
@@ -82,7 +83,7 @@ namespace FormCrawlerApp
             btnExecute = new Button { Text = "🚀 1. 執行登入並批次匯入", Location = new Point(30, 90), Size = new Size(250, 50), Font = new Font("Microsoft JhengHei", 11F, FontStyle.Bold), BackColor = Color.PaleGreen, Cursor = Cursors.Hand };
             btnExecute.Click += BtnExecute_Click;
 
-            btnOpenFolder = new Button { Text = "📁 開啟 Excel 資料夾", Location = new Point(300, 90), Size = new Size(200, 50), Cursor = Cursors.Hand };
+            btnOpenFolder = new Button { Text = "📁 開啟 Excel 資料夾", Location = new Point(300, 90), Size = new Size(200, 50), Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             btnOpenFolder.Click += (s, e) => {
                 string currentPath = GetExportPath();
                 if (!Directory.Exists(currentPath)) Directory.CreateDirectory(currentPath);
@@ -90,20 +91,30 @@ namespace FormCrawlerApp
             };
 
             cmbCategories = new ComboBox { Location = new Point(30, 160), Size = new Size(250, 30), DropDownStyle = ComboBoxStyle.DropDownList };
-            btnDownloadPdf = new Button { Text = "📄 2. 依選單下載 PDF", Location = new Point(300, 155), Size = new Size(200, 40), Font = new Font("Microsoft JhengHei", 10F, FontStyle.Bold), BackColor = Color.LightSkyBlue, Cursor = Cursors.Hand };
+            
+            btnDownloadPdf = new Button { Text = "📄 2. 依選單下載 PDF", Location = new Point(300, 155), Size = new Size(200, 40), Font = new Font("Microsoft JhengHei", 10F, FontStyle.Bold), BackColor = Color.LightSkyBlue, Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             btnDownloadPdf.Click += BtnDownloadPdf_Click;
 
-            lblStatus = new Label { 
+            // 【修改點】：改為唯讀 TextBox，可以滑鼠選取複製，且會隨視窗縮放
+            txtStatus = new TextBox { 
                 Text = "系統就緒。執行時將會先清空 Excel 資料夾。\n注意：請先確認各類別是否開啟「資料庫寫入設定」。", 
-                Location = new Point(30, 220), Size = new Size(700, 150), AutoSize = false, 
-                ForeColor = Color.DarkSlateGray, Font = new Font("Microsoft JhengHei", 11F)
+                Location = new Point(30, 220), 
+                Size = new Size(470, 210), 
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Vertical,
+                WordWrap = true,
+                BackColor = Color.WhiteSmoke,
+                ForeColor = Color.DarkSlateGray, 
+                Font = new Font("Microsoft JhengHei", 11F),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             
             this.Controls.Add(btnExecute); 
             this.Controls.Add(btnOpenFolder);
             this.Controls.Add(cmbCategories); 
             this.Controls.Add(btnDownloadPdf);
-            this.Controls.Add(lblStatus); 
+            this.Controls.Add(txtStatus); 
             this.Controls.Add(menuPanel);
         }
 
@@ -234,10 +245,17 @@ namespace FormCrawlerApp
                     string url = parts[2].Trim();
                     if (string.IsNullOrWhiteSpace(url)) continue;
 
-                    // 【核心修正】EIP Plus 系統標準的 PDF 匯出 API，直接替換 Action 參數即可下載
-                    string realPdfUrl = url.Replace("print_frameset", "export_pdf")
-                                           .Replace("view_formsflow", "export_pdf")
-                                           .Replace("show_formsflow_list", "export_pdf");
+                    // 【修改點】：將下載路徑替換成 print_version
+                    string realPdfUrl = url.Replace("view_frameset", "print_version")
+                                           .Replace("print_frameset", "print_version")
+                                           .Replace("view_formsflow", "print_version")
+                                           .Replace("show_formsflow_list", "print_version");
+
+                    // 【修改點】：自動補上列印版 PDF 參數
+                    if (!realPdfUrl.Contains("print_style=0"))
+                    {
+                        realPdfUrl += "&print_style=0&portrait=1&display_qrcode=";
+                    }
 
                     if (realPdfUrl.StartsWith("/")) 
                     {
@@ -251,13 +269,13 @@ namespace FormCrawlerApp
                     string safeSubject = string.Concat(subject.Split(Path.GetInvalidFileNameChars()));
                     string savePath = Path.Combine(pdfDir, $"{formNo}_{safeSubject}.pdf");
                     
-                    UIState(false, $"正在下載表單 PDF ({i + 1}/{lines.Length}): {formNo}");
+                    UIState(false, $"正在下載表單 PDF ({i + 1}/{lines.Length}):\n{formNo} - {subject}");
                     
                     try 
                     {
                         await network.DownloadFileAsync(realPdfUrl, savePath);
 
-                        // 防呆驗證：檢查下載下來的檔案是不是真的 PDF (讀取表頭 %PDF)
+                        // 驗證下載檔案 (如果 print_version API 產生的是網頁 HTML 而非二進制 PDF，會自動標記為 .html)
                         if (File.Exists(savePath))
                         {
                             byte[] buffer = new byte[4];
@@ -269,18 +287,13 @@ namespace FormCrawlerApp
                             
                             if (header != "%PDF")
                             {
-                                // 若下載到的不是 PDF (可能是登入過期跳轉到錯誤頁面)，將副檔名改為 html 方便人工除錯
-                                File.Move(savePath, savePath + "_Error.html");
+                                File.Move(savePath, savePath + "_列印版.html"); // 若伺服器輸出 HTML 就保存為 HTML
                             }
-                            else
-                            {
-                                successCount++;
-                            }
+                            successCount++;
                         }
                     }
                     catch (Exception dlEx)
                     {
-                        // 單一檔案下載失敗不中斷整個迴圈
                         System.Diagnostics.Debug.WriteLine($"下載失敗 {formNo}: {dlEx.Message}");
                     }
 
@@ -305,7 +318,14 @@ namespace FormCrawlerApp
             btnSettings.Enabled = enable;
             btnDbSettings.Enabled = enable;
             btnDownloadPdf.Enabled = enable; 
-            lblStatus.Text = msg;
+            
+            // UI 更新 (改為 AppendText + 捲動到最底，方便觀察進度)
+            if (enable) txtStatus.Text = msg; 
+            else {
+                txtStatus.AppendText(Environment.NewLine + ">>> " + msg);
+                txtStatus.SelectionStart = txtStatus.Text.Length;
+                txtStatus.ScrollToCaret();
+            }
         }
     }
 }
