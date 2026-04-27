@@ -13,7 +13,6 @@ namespace FormCrawlerApp
             var tables = new List<string>();
             if (!File.Exists(dbPath)) throw new Exception("找不到指定的 SQLite 檔案！\n路徑：" + dbPath);
             
-            // 【修改點】加入 Pooling=False; 確保 using 結束後徹底釋放檔案鎖定
             using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;Pooling=False;")) {
                 conn.Open();
                 using (var cmd = new SQLiteCommand("SELECT name FROM sqlite_master WHERE type='table';", conn))
@@ -29,7 +28,6 @@ namespace FormCrawlerApp
             var cols = new List<string>();
             if (!File.Exists(dbPath) || string.IsNullOrEmpty(tableName)) return cols;
             
-            // 【修改點】加入 Pooling=False;
             using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;Pooling=False;")) {
                 conn.Open();
                 using (var cmd = new SQLiteCommand($"PRAGMA table_info({tableName});", conn))
@@ -46,10 +44,10 @@ namespace FormCrawlerApp
                 return;
 
             string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
+            string[] vFields = { "v_1", "v_2", "v_3" }; // 定義三個虛擬的 v 寫入來源
 
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
 
-            // 【修改點】加入 Pooling=False;
             using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;Read Write=True;Pooling=False;"))
             {
                 try 
@@ -79,6 +77,7 @@ namespace FormCrawlerApp
                         var updateSets = new List<string>();
                         var parameters = new Dictionary<string, object>();
 
+                        // 1. 處理 11 個標準爬蟲欄位
                         for (int i = 0; i < scrapeHeaders.Length; i++)
                         {
                             var mapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == scrapeHeaders[i]);
@@ -92,6 +91,24 @@ namespace FormCrawlerApp
                                 if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
                                 
                                 parameters.Add(pName, row[i]);
+                            }
+                        }
+
+                        // 2. 處理 3 個 [v] 寫入欄位
+                        for (int i = 0; i < vFields.Length; i++)
+                        {
+                            var mapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[i]);
+                            if (mapping != null && !string.IsNullOrEmpty(mapping.DbColumn))
+                            {
+                                string pName = "@v_param_" + i;
+                                string dbCol = mapping.DbColumn;
+                                
+                                insertCols.Add(dbCol);
+                                insertParams.Add(pName);
+                                if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
+                                
+                                // 強制寫入固定字串 "v"
+                                parameters.Add(pName, "v");
                             }
                         }
 
@@ -129,7 +146,7 @@ namespace FormCrawlerApp
                     }
                     transaction.Commit();
                 }
-            } // <--- 由於 Pooling=False，執行到這裡時，底層的 .db 檔案鎖定會被完全拔除！
+            } 
         }
     }
 }
