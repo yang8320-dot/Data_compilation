@@ -13,7 +13,7 @@ namespace FormCrawlerApp
             var tables = new List<string>();
             if (!File.Exists(dbPath)) throw new Exception("找不到指定的 SQLite 檔案！\n路徑：" + dbPath);
             
-            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;")) {
+            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;")) {
                 conn.Open();
                 using (var cmd = new SQLiteCommand("SELECT name FROM sqlite_master WHERE type='table';", conn))
                 using (var reader = cmd.ExecuteReader()) {
@@ -28,7 +28,7 @@ namespace FormCrawlerApp
             var cols = new List<string>();
             if (!File.Exists(dbPath) || string.IsNullOrEmpty(tableName)) return cols;
             
-            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;")) {
+            using (var conn = new SQLiteConnection($"Data Source={dbPath};Version=3;Read Write=True;")) {
                 conn.Open();
                 using (var cmd = new SQLiteCommand($"PRAGMA table_info({tableName});", conn))
                 using (var reader = cmd.ExecuteReader()) {
@@ -43,15 +43,27 @@ namespace FormCrawlerApp
             if (!config.IsEnabled || string.IsNullOrEmpty(config.DbFilePath) || !File.Exists(config.DbFilePath) || string.IsNullOrEmpty(config.TargetTable))
                 return;
 
-            // 更新 11 個欄位
             string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
 
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
-            if (string.IsNullOrEmpty(keyDbColumn)) return;
 
-            using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;"))
+            // 加入 Read Write=True; 避免預設唯讀
+            using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;Read Write=True;"))
             {
-                conn.Open();
+                try 
+                {
+                    conn.Open();
+                }
+                catch (SQLiteException ex)
+                {
+                    // 攔截並給予明確的權限錯誤提示
+                    if (ex.ResultCode == SQLiteErrorCode.ReadOnly || ex.Message.ToLower().Contains("readonly"))
+                    {
+                        throw new Exception($"\n請確認以下兩點：\n1. 該資料庫檔案是否被設定為「唯讀」。\n2. 是否有其他軟體 (例如 DB Browser for SQLite) 正在開啟並鎖定該檔案，請先關閉它！\n\n系統原始錯誤：{ex.Message}");
+                    }
+                    throw;
+                }
+
                 using (var transaction = conn.BeginTransaction())
                 {
                     foreach (var row in records)
@@ -59,10 +71,7 @@ namespace FormCrawlerApp
                         string formNo = row[0]; 
                         if (string.IsNullOrEmpty(formNo)) continue;
 
-                        if (config.ExcludeFormNumbers != null && config.ExcludeFormNumbers.Contains(formNo))
-                        {
-                            continue;
-                        }
+                        if (config.ExcludeFormNumbers != null && config.ExcludeFormNumbers.Contains(formNo)) continue;
 
                         var insertCols = new List<string>();
                         var insertParams = new List<string>();
@@ -72,6 +81,7 @@ namespace FormCrawlerApp
                         for (int i = 0; i < scrapeHeaders.Length; i++)
                         {
                             var mapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == scrapeHeaders[i]);
+                            // 即使沒有全選欄位，只要有選的就會納入
                             if (mapping != null && !string.IsNullOrEmpty(mapping.DbColumn))
                             {
                                 string pName = "@p" + i;
@@ -88,10 +98,14 @@ namespace FormCrawlerApp
                         if (insertCols.Count == 0) continue;
 
                         bool exists = false;
-                        using (var cmdExist = new SQLiteCommand($"SELECT COUNT(1) FROM {config.TargetTable} WHERE {keyDbColumn} = @key", conn))
+                        // 如果沒有設定主鍵(表單單號)，就直接新增，不檢查重複
+                        if (!string.IsNullOrEmpty(keyDbColumn))
                         {
-                            cmdExist.Parameters.AddWithValue("@key", formNo);
-                            exists = (long)cmdExist.ExecuteScalar() > 0;
+                            using (var cmdExist = new SQLiteCommand($"SELECT COUNT(1) FROM {config.TargetTable} WHERE {keyDbColumn} = @key", conn))
+                            {
+                                cmdExist.Parameters.AddWithValue("@key", formNo);
+                                exists = (long)cmdExist.ExecuteScalar() > 0;
+                            }
                         }
 
                         string sql = "";
