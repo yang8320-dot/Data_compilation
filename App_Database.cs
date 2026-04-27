@@ -47,6 +47,7 @@ namespace FormCrawlerApp
             string[] vFields = { "v_1", "v_2", "v_3", "v_4" }; 
             string customTextFieldName = "CustomText";
 
+            // 取得使用者設定的主鍵(表單單號)對應的資料庫欄位
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
 
             using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;Read Write=True;Pooling=False;"))
@@ -68,7 +69,8 @@ namespace FormCrawlerApp
                 {
                     foreach (var row in records)
                     {
-                        string formNo = row[0]; 
+                        // 【強化防呆】確保抓下來的表單單號完全沒有隱藏的空白，避免資料庫比對不到
+                        string formNo = row[0]?.Trim(); 
                         if (string.IsNullOrEmpty(formNo)) continue;
 
                         if (config.ExcludeFormNumbers != null && config.ExcludeFormNumbers.Contains(formNo)) continue;
@@ -91,7 +93,8 @@ namespace FormCrawlerApp
                                 insertParams.Add(pName);
                                 if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
                                 
-                                parameters.Add(pName, row[i]);
+                                // 將寫入資料也進行 Trim，保持乾淨
+                                parameters.Add(pName, row[i]?.Trim());
                             }
                         }
 
@@ -114,7 +117,6 @@ namespace FormCrawlerApp
 
                         // 3. 處理 [自訂文字] 寫入欄位
                         var customMapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
-                        // 確保有選欄位，且使用者真的有填寫文字，才進行寫入
                         if (customMapping != null && !string.IsNullOrEmpty(customMapping.DbColumn) && !string.IsNullOrEmpty(config.CustomTextValue))
                         {
                             string pName = "@custom_text_param";
@@ -124,12 +126,13 @@ namespace FormCrawlerApp
                             insertParams.Add(pName);
                             if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
 
-                            parameters.Add(pName, config.CustomTextValue);
+                            parameters.Add(pName, config.CustomTextValue.Trim());
                         }
 
                         if (insertCols.Count == 0) continue;
 
                         bool exists = false;
+                        // 必須要有指定 "表單單號" 寫入的欄位，防重複機制才會啟動
                         if (!string.IsNullOrEmpty(keyDbColumn))
                         {
                             using (var cmdExist = new SQLiteCommand($"SELECT COUNT(1) FROM {config.TargetTable} WHERE {keyDbColumn} = @key", conn))
@@ -142,10 +145,12 @@ namespace FormCrawlerApp
                         string sql = "";
                         if (exists && updateSets.Count > 0)
                         {
+                            // 存在該單號 -> 執行 UPDATE (取代)
                             sql = $"UPDATE {config.TargetTable} SET {string.Join(", ", updateSets)} WHERE {keyDbColumn} = @key";
                         }
                         else if (!exists)
                         {
+                            // 不存在該單號，或是沒有指定比對基準 -> 執行 INSERT (新增)
                             sql = $"INSERT INTO {config.TargetTable} ({string.Join(", ", insertCols)}) VALUES ({string.Join(", ", insertParams)})";
                         }
 
