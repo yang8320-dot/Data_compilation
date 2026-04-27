@@ -16,7 +16,7 @@ namespace FormCrawlerApp
     {
         private Button btnExecute, btnSettings, btnDbSettings, btnOpenFolder, btnDownloadPdf;
         private ComboBox cmbCategories;
-        private TextBox txtStatus; // 改用 TextBox 讓文字可以被選取
+        private TextBox txtStatus;
         private App_Settings settings;
         private App_DbSettings dbSettings;
         private App_Network network;
@@ -61,7 +61,7 @@ namespace FormCrawlerApp
         {
             this.Text = "經手表單自動化工具";
             this.Size = new Size(550, 500); 
-            this.MinimumSize = new Size(550, 500); // 避免視窗縮太小
+            this.MinimumSize = new Size(550, 500);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
@@ -95,7 +95,6 @@ namespace FormCrawlerApp
             btnDownloadPdf = new Button { Text = "📄 2. 依選單下載 PDF", Location = new Point(300, 155), Size = new Size(200, 40), Font = new Font("Microsoft JhengHei", 10F, FontStyle.Bold), BackColor = Color.LightSkyBlue, Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             btnDownloadPdf.Click += BtnDownloadPdf_Click;
 
-            // 【修改點】：改為唯讀 TextBox，可以滑鼠選取複製，且會隨視窗縮放
             txtStatus = new TextBox { 
                 Text = "系統就緒。執行時將會先清空 Excel 資料夾。\n注意：請先確認各類別是否開啟「資料庫寫入設定」。", 
                 Location = new Point(30, 220), 
@@ -120,6 +119,10 @@ namespace FormCrawlerApp
 
         private async void BtnExecute_Click(object sender, EventArgs e)
         {
+            // 【修改點】強制載入最新設定檔，避免因路徑錯誤或重開機導致設定遺失
+            settings.Load();
+            dbSettings = App_DbSettings.Load();
+
             if (settings.CrawlUrls.Count == 0) { MessageBox.Show("請先設定爬蟲網址清單。"); return; }
 
             string exportDir = GetExportPath();
@@ -183,7 +186,6 @@ namespace FormCrawlerApp
                         List<string> urlsToSave = new List<string>();
                         foreach(var row in kvp.Value)
                         {
-                            // 儲存格式: 單號(0) | 主題(2) | 網址(10)
                             urlsToSave.Add($"{row[0]}|{row[2]}|{row[10]}");
                         }
                         File.WriteAllLines(txtPath, urlsToSave);
@@ -245,13 +247,11 @@ namespace FormCrawlerApp
                     string url = parts[2].Trim();
                     if (string.IsNullOrWhiteSpace(url)) continue;
 
-                    // 【修改點】：將下載路徑替換成 print_version
                     string realPdfUrl = url.Replace("view_frameset", "print_version")
                                            .Replace("print_frameset", "print_version")
                                            .Replace("view_formsflow", "print_version")
                                            .Replace("show_formsflow_list", "print_version");
 
-                    // 【修改點】：自動補上列印版 PDF 參數
                     if (!realPdfUrl.Contains("print_style=0"))
                     {
                         realPdfUrl += "&print_style=0&portrait=1&display_qrcode=";
@@ -275,7 +275,6 @@ namespace FormCrawlerApp
                     {
                         await network.DownloadFileAsync(realPdfUrl, savePath);
 
-                        // 驗證下載檔案 (如果 print_version API 產生的是網頁 HTML 而非二進制 PDF，會自動標記為 .html)
                         if (File.Exists(savePath))
                         {
                             byte[] buffer = new byte[4];
@@ -287,7 +286,7 @@ namespace FormCrawlerApp
                             
                             if (header != "%PDF")
                             {
-                                File.Move(savePath, savePath + "_列印版.html"); // 若伺服器輸出 HTML 就保存為 HTML
+                                File.Move(savePath, savePath + "_列印版.html");
                             }
                             successCount++;
                         }
@@ -297,7 +296,6 @@ namespace FormCrawlerApp
                         System.Diagnostics.Debug.WriteLine($"下載失敗 {formNo}: {dlEx.Message}");
                     }
 
-                    // 避免被伺服器阻擋，加入隨機延遲
                     if (i < lines.Length - 1)
                     {
                         await Task.Delay(rnd.Next(1500, 3000));
@@ -319,7 +317,6 @@ namespace FormCrawlerApp
             btnDbSettings.Enabled = enable;
             btnDownloadPdf.Enabled = enable; 
             
-            // UI 更新 (改為 AppendText + 捲動到最底，方便觀察進度)
             if (enable) txtStatus.Text = msg; 
             else {
                 txtStatus.AppendText(Environment.NewLine + ">>> " + msg);
