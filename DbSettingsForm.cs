@@ -50,8 +50,9 @@ namespace FormCrawlerApp
             btnSave.Click += (s, e) => {
                 foreach (var kvp in excludeTextBoxes)
                 {
+                    // 【保留您的排版 + 強化防呆】儲存時強制拔除 \uFEFF (BOM) 與 \u200B 等隱形字元，確保黑名單生效
                     kvp.Key.ExcludeFormNumbers = kvp.Value.Text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
-                                                               .Select(txt => txt.Trim())
+                                                               .Select(txt => txt.Trim('\uFEFF', '\u200B', ' ', '\t'))
                                                                .Where(txt => !string.IsNullOrEmpty(txt))
                                                                .ToList();
                 }
@@ -101,14 +102,12 @@ namespace FormCrawlerApp
             List<ComboBox> vMappingCmbs = new List<ComboBox>();
             ComboBox cbCustom = new ComboBox(); 
             
-            // 【修改點】1. 面板高度增加到 510，解決下方被切掉的問題
             Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 510), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             
             foreach (var field in scrapeHeaders)
             {
                 Label lblF = new Label { Text = $"[{field}] 寫入：", Location = new Point(15, my+4), AutoSize = true, ForeColor = Color.DarkBlue };
-                // 【修改點】2. 下拉選單寬度增加到 365，填滿右側的空白區域
                 ComboBox cmbF = new ComboBox { Location = new Point(180, my), Width = 365, DropDownStyle = ComboBoxStyle.DropDownList };
                 
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == field);
@@ -119,11 +118,9 @@ namespace FormCrawlerApp
                 my += 33; 
             }
 
-            // 【修改點】v 欄位寬度跟著加長，填滿空間
             Label lblV1 = new Label { Text = "[v] 寫入(1,2)：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkMagenta };
             mappingPanel.Controls.Add(lblV1);
             for (int i = 0; i < 2; i++) {
-                // 寬度從 125 變成 175，間距拉寬
                 ComboBox cmbV = new ComboBox { Location = new Point(180 + (i * 190), my), Width = 175, DropDownStyle = ComboBoxStyle.DropDownList };
                 var existMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == vFields[i]);
                 if (existMap != null) cmbV.Tag = existMap.DbColumn; 
@@ -143,7 +140,7 @@ namespace FormCrawlerApp
             }
             my += 33;
 
-            // 【修改點】3. 微調自訂字的欄位間距，不要遮蔽
+            // 【完全採用您設定的精準對齊座標】
             Label lblCustom = new Label { Text = "[自訂字] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkGreen };
             TextBox txtCustom = new TextBox { Location = new Point(180, my), Width = 175, Text = config.CustomTextValue };
             Label lblArrow = new Label { Text = "➔", Location = new Point(360, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
@@ -160,7 +157,6 @@ namespace FormCrawlerApp
 
             Label lblExclude = new Label { Text = "排除寫入清單\n(每行輸入一筆表單單號)：", Location = new Point(600, 145), AutoSize = true, ForeColor = Color.Brown };
             
-            // 配合面板加長，黑名單文字框也同步加長
             TextBox txtExclude = new TextBox {
                 Location = new Point(600, 190),
                 Size = new Size(300, 480), 
