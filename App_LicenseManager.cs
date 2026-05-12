@@ -11,7 +11,7 @@ namespace FormCrawlerApp
         private static readonly DateTime ExpirationDate = new DateTime(2050, 12, 31);
 
         // 預設授權使用者清單
-        public static readonly string[] DefaultUsers = { "黃忠揚1", "TJ700657", "TJ700228", "TJ700533", "TJ204159" };
+        public static readonly string[] DefaultUsers = { "黃忠揚", "TJ700657", "TJ700228", "TJ700533", "TJ204159" };
 
         public static bool VerifyLicense()
         {
