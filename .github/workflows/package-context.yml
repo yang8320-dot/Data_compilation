@@ -1,4 +1,4 @@
-name: 打包專案原始碼環境 (Context)
+name: 打包專案-Context
 
 # 設定為手動觸發
 on:
