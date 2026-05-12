@@ -49,7 +49,7 @@ namespace FormCrawlerApp
                 return; // 直接結束這次的開啟，達成防重複啟動
             }
 
-            // 啟用 DPI 感知防模糊
+            // 啟用 DPI 感知防模糊 (確保 MsgBox 也是清晰的)
             if (Environment.OSVersion.Version.Major >= 6)
             {
                 SetProcessDPIAware();
@@ -57,6 +57,14 @@ namespace FormCrawlerApp
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            // 【新增】執行 Windows 使用者權限驗證
+            if (!App_LicenseManager.VerifyLicense())
+            {
+                MessageBox.Show("驗證失敗，非授權使用者！", "系統提示", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return; // 直接結束程式
+            }
+
             Application.Run(new MainForm());
         }
     }
