@@ -61,7 +61,7 @@ namespace FormCrawlerApp
             // 【新增】執行 Windows 使用者權限驗證
             if (!App_LicenseManager.VerifyLicense())
             {
-                MessageBox.Show("驗證失敗，非授權使用者！", "系統提示", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("驗證失敗，非授權使用者！\n\n您沒有權限執行此程式，系統即將關閉。", "系統提示", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return; // 直接結束程式
             }
 
