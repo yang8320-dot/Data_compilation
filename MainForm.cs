@@ -67,12 +67,15 @@ namespace FormCrawlerApp
             this.Font = new Font("Microsoft JhengHei", 10F);
 
             Panel menuPanel = new Panel { Dock = DockStyle.Top, Height = 70, BackColor = Color.LightSteelBlue };
-            btnSettings = new Button { Text = "⚙️ 網址與帳密設定", Location = new Point(15, 15), Size = new Size(160, 40), Cursor = Cursors.Hand };
+            
+            // 【修改點】寬度由 160 改為 170 (+10)
+            btnSettings = new Button { Text = "⚙️ 網址與帳密設定", Location = new Point(15, 15), Size = new Size(170, 40), Cursor = Cursors.Hand };
             btnSettings.Click += (s, e) => {
                 if (new SettingsForm(settings).ShowDialog() == DialogResult.OK) { settings.Load(); }
             };
             
-            btnDbSettings = new Button { Text = "🗄️ 資料庫寫入設定", Location = new Point(190, 15), Size = new Size(160, 40), Cursor = Cursors.Hand };
+            // 【修改點】寬度由 160 改為 170 (+10)，並將 X 座標由 190 往右移至 200，以維持按鈕間距
+            btnDbSettings = new Button { Text = "🗄️ 資料庫寫入設定", Location = new Point(200, 15), Size = new Size(170, 40), Cursor = Cursors.Hand };
             btnDbSettings.Click += (s, e) => {
                 if (new DbSettingsForm(dbSettings).ShowDialog() == DialogResult.OK) { dbSettings = App_DbSettings.Load(); }
             };
@@ -149,7 +152,7 @@ namespace FormCrawlerApp
                     }
                 }
 
-                // 【修改點】移除 "彰濱廠虛驚事件輕度傷害記錄表"
+                // 【已修改】移除 "彰濱廠虛驚事件輕度傷害記錄表"
                 string[] targetKeywords = new string[] {
                     "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文"
                 };
