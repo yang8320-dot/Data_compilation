@@ -119,7 +119,6 @@ namespace FormCrawlerApp
 
         private async void BtnExecute_Click(object sender, EventArgs e)
         {
-            // 【修改點】強制載入最新設定檔，避免因路徑錯誤或重開機導致設定遺失
             settings.Load();
             dbSettings = App_DbSettings.Load();
 
@@ -150,8 +149,9 @@ namespace FormCrawlerApp
                     }
                 }
 
+                // 【修改點】移除 "彰濱廠虛驚事件輕度傷害記錄表"
                 string[] targetKeywords = new string[] {
-                    "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文", "彰濱廠虛驚事件輕度傷害記錄表"
+                    "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文"
                 };
                 Dictionary<string, List<string[]>> categorizedData = new Dictionary<string, List<string[]>>();
                 categorizedData["未分類其他表單"] = new List<string[]>(); 
