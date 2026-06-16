@@ -45,8 +45,7 @@ namespace FormCrawlerApp
 
             string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
             string[] vFields = { "v_1", "v_2", "v_3", "v_4" }; 
-            string customTextFieldName = "CustomText";
-
+            
             string keyDbColumn = config.Mappings.FirstOrDefault(m => m.ScrapedField == "表單單號")?.DbColumn;
 
             using (var conn = new SQLiteConnection($"Data Source={config.DbFilePath};Version=3;Read Write=True;Pooling=False;"))
@@ -124,18 +123,24 @@ namespace FormCrawlerApp
                             }
                         }
 
-                        // 3. 處理 [自訂文字] 寫入欄位
-                        var customMapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
-                        if (customMapping != null && !string.IsNullOrEmpty(customMapping.DbColumn) && !string.IsNullOrEmpty(config.CustomTextValue))
+                        // 3. 處理 [自訂文字] 寫入欄位 (擴增為 3 個)
+                        string[] customFields = { "CustomText1", "CustomText2", "CustomText3" };
+                        string[] customValues = { config.CustomTextValue1, config.CustomTextValue2, config.CustomTextValue3 };
+
+                        for (int i = 0; i < customFields.Length; i++)
                         {
-                            string pName = "@custom_text_param";
-                            string dbCol = customMapping.DbColumn;
+                            var customMapping = config.Mappings.FirstOrDefault(m => m.ScrapedField == customFields[i]);
+                            if (customMapping != null && !string.IsNullOrEmpty(customMapping.DbColumn) && !string.IsNullOrEmpty(customValues[i]))
+                            {
+                                string pName = $"@custom_text_param_{i}";
+                                string dbCol = customMapping.DbColumn;
 
-                            insertCols.Add(dbCol);
-                            insertParams.Add(pName);
-                            if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
+                                insertCols.Add(dbCol);
+                                insertParams.Add(pName);
+                                if (dbCol != keyDbColumn) updateSets.Add($"{dbCol} = {pName}");
 
-                            parameters.Add(pName, config.CustomTextValue.Trim());
+                                parameters.Add(pName, customValues[i].Trim());
+                            }
                         }
 
                         if (insertCols.Count == 0) continue;
