@@ -13,10 +13,10 @@ namespace FormCrawlerApp
         private string[] scrapeHeaders = { "表單單號", "分類", "表單主題", "狀態", "申請者", "承辦人", "目前處理者", "申請時間", "修改時間", "到期時間", "網址" };
         
         private string[] vFields = { "v_1", "v_2", "v_3", "v_4" };
-        private string customTextFieldName = "CustomText";
+        private string[] customTextFieldNames = { "CustomText1", "CustomText2", "CustomText3" };
 
         private Dictionary<CategoryDbSetting, TextBox> excludeTextBoxes = new Dictionary<CategoryDbSetting, TextBox>();
-        private Dictionary<CategoryDbSetting, TextBox> customTextBoxes = new Dictionary<CategoryDbSetting, TextBox>();
+        private Dictionary<CategoryDbSetting, TextBox[]> customTextBoxes = new Dictionary<CategoryDbSetting, TextBox[]>();
 
         public DbSettingsForm(App_DbSettings settings)
         {
@@ -27,13 +27,12 @@ namespace FormCrawlerApp
         private void InitializeUI()
         {
             this.Text = "資料庫寫入設定";
-            // 視窗高度稍微增加以容納更長的面板
-            this.Size = new Size(970, 850); 
+            this.Size = new Size(970, 930); 
             this.StartPosition = FormStartPosition.CenterParent;
             this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new Font("Microsoft JhengHei", 10F);
 
-            tabControl = new TabControl { Dock = DockStyle.Top, Height = 730 };
+            tabControl = new TabControl { Dock = DockStyle.Top, Height = 800 };
 
             foreach (var cat in dbSettings.Categories)
             {
@@ -42,32 +41,75 @@ namespace FormCrawlerApp
                 tabControl.TabPages.Add(page);
             }
 
+            Button btnExport = new Button {
+                Text = "📤 匯出設定檔",
+                Location = new Point(20, 825), Size = new Size(130, 45),
+                Cursor = Cursors.Hand
+            };
+            btnExport.Click += (s, e) => {
+                CommitUIToSettings();
+                using (SaveFileDialog sfd = new SaveFileDialog { Filter = "XML 設定檔|*.xml", FileName = "資料庫寫入設定備份.xml" }) {
+                    if (sfd.ShowDialog() == DialogResult.OK) {
+                        dbSettings.ExportToFile(sfd.FileName);
+                        MessageBox.Show("設定檔匯出成功！", "系統提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            };
+
+            Button btnImport = new Button {
+                Text = "📥 匯入設定檔",
+                Location = new Point(160, 825), Size = new Size(130, 45),
+                Cursor = Cursors.Hand
+            };
+            btnImport.Click += (s, e) => {
+                using (OpenFileDialog ofd = new OpenFileDialog { Filter = "XML 設定檔|*.xml" }) {
+                    if (ofd.ShowDialog() == DialogResult.OK) {
+                        try {
+                            var imported = App_DbSettings.ImportFromFile(ofd.FileName);
+                            imported.Save(); 
+                            MessageBox.Show("設定檔匯入成功！系統將自動重新載入此視窗。", "系統提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            this.DialogResult = DialogResult.OK; 
+                            this.Close();
+                        } catch (Exception ex) {
+                            MessageBox.Show("匯入失敗，檔案格式可能有誤：\n" + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            };
+
             Button btnSave = new Button {
                 Text = "💾 儲存所有資料庫設定",
-                Location = new Point(295, 750), Size = new Size(380, 45),
+                Location = new Point(310, 825), Size = new Size(380, 45),
                 BackColor = Color.LightSteelBlue, Cursor = Cursors.Hand
             };
             btnSave.Click += (s, e) => {
-                foreach (var kvp in excludeTextBoxes)
-                {
-                    // 【保留您的排版 + 強化防呆】儲存時強制拔除 \uFEFF (BOM) 與 \u200B 等隱形字元，確保黑名單生效
-                    kvp.Key.ExcludeFormNumbers = kvp.Value.Text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
-                                                               .Select(txt => txt.Trim('\uFEFF', '\u200B', ' ', '\t'))
-                                                               .Where(txt => !string.IsNullOrEmpty(txt))
-                                                               .ToList();
-                }
-                foreach (var kvp in customTextBoxes)
-                {
-                    kvp.Key.CustomTextValue = kvp.Value.Text;
-                }
-
+                CommitUIToSettings();
                 dbSettings.Save();
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             };
 
             this.Controls.Add(tabControl);
+            this.Controls.Add(btnExport);
+            this.Controls.Add(btnImport);
             this.Controls.Add(btnSave);
+        }
+
+        private void CommitUIToSettings()
+        {
+            foreach (var kvp in excludeTextBoxes)
+            {
+                kvp.Key.ExcludeFormNumbers = kvp.Value.Text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                                                           .Select(txt => txt.Trim('\uFEFF', '\u200B', ' ', '\t'))
+                                                           .Where(txt => !string.IsNullOrEmpty(txt))
+                                                           .ToList();
+            }
+            foreach (var kvp in customTextBoxes)
+            {
+                kvp.Key.CustomTextValue1 = kvp.Value[0].Text;
+                kvp.Key.CustomTextValue2 = kvp.Value[1].Text;
+                kvp.Key.CustomTextValue3 = kvp.Value[2].Text;
+            }
         }
 
         private void BuildCategoryPanel(TabPage page, CategoryDbSetting config)
@@ -100,9 +142,10 @@ namespace FormCrawlerApp
 
             List<ComboBox> colMappingCmbs = new List<ComboBox>();
             List<ComboBox> vMappingCmbs = new List<ComboBox>();
-            ComboBox cbCustom = new ComboBox(); 
+            ComboBox[] cbCustoms = new ComboBox[3];
+            TextBox[] txtCustoms = new TextBox[3];
             
-            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 510), BorderStyle = BorderStyle.FixedSingle };
+            Panel mappingPanel = new Panel { Location = new Point(labelX, y), Size = new Size(570, 580), BorderStyle = BorderStyle.FixedSingle };
             int my = 15;
             
             foreach (var field in scrapeHeaders)
@@ -140,18 +183,26 @@ namespace FormCrawlerApp
             }
             my += 33;
 
-            // 【完全採用您設定的精準對齊座標】
-            Label lblCustom = new Label { Text = "[自訂字] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkGreen };
-            TextBox txtCustom = new TextBox { Location = new Point(180, my), Width = 175, Text = config.CustomTextValue };
-            Label lblArrow = new Label { Text = "➔", Location = new Point(360, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
-            ComboBox cmbCustom = new ComboBox { Location = new Point(385, my), Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
-            
-            cbCustom = cmbCustom;
-            var existCustomMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
-            if (existCustomMap != null) cbCustom.Tag = existCustomMap.DbColumn;
-            
-            customTextBoxes[config] = txtCustom;
-            mappingPanel.Controls.AddRange(new Control[] { lblCustom, txtCustom, lblArrow, cbCustom });
+            for (int i = 0; i < 3; i++)
+            {
+                string fieldName = customTextFieldNames[i];
+                string currentValue = i == 0 ? config.CustomTextValue1 : (i == 1 ? config.CustomTextValue2 : config.CustomTextValue3);
+
+                Label lblCustom = new Label { Text = $"[自訂字{i+1}] 寫入：", Location = new Point(15, my + 4), AutoSize = true, ForeColor = Color.DarkGreen };
+                TextBox txtCustom = new TextBox { Location = new Point(180, my), Width = 175, Text = currentValue };
+                Label lblArrow = new Label { Text = "➔", Location = new Point(360, my + 4), AutoSize = true, ForeColor = Color.DarkGray };
+                ComboBox cmbCustom = new ComboBox { Location = new Point(385, my), Width = 160, DropDownStyle = ComboBoxStyle.DropDownList };
+                
+                cbCustoms[i] = cmbCustom;
+                txtCustoms[i] = txtCustom;
+
+                var existCustomMap = config.Mappings.FirstOrDefault(m => m.ScrapedField == fieldName);
+                if (existCustomMap != null) cmbCustom.Tag = existCustomMap.DbColumn;
+                
+                mappingPanel.Controls.AddRange(new Control[] { lblCustom, txtCustom, lblArrow, cmbCustom });
+                my += 33;
+            }
+            customTextBoxes[config] = txtCustoms;
 
             page.Controls.Add(mappingPanel);
 
@@ -159,7 +210,7 @@ namespace FormCrawlerApp
             
             TextBox txtExclude = new TextBox {
                 Location = new Point(600, 190),
-                Size = new Size(300, 480), 
+                Size = new Size(300, 545), 
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 WordWrap = false
@@ -213,17 +264,24 @@ namespace FormCrawlerApp
                         }
                     }
 
-                    cbCustom.Items.Clear(); cbCustom.Items.AddRange(cols.ToArray());
-                    string targetCustomStr = cbCustom.Tag?.ToString() ?? "";
-                    cbCustom.SelectedIndex = cols.Contains(targetCustomStr) ? cols.IndexOf(targetCustomStr) : 0;
-                    
-                    cbCustom.SelectedIndexChanged -= CbCustom_SelectedIndexChanged;
-                    cbCustom.SelectedIndexChanged += CbCustom_SelectedIndexChanged;
-                    void CbCustom_SelectedIndexChanged(object sender, EventArgs e) {
-                        var map = config.Mappings.FirstOrDefault(m => m.ScrapedField == customTextFieldName);
-                        if (map == null) { map = new FieldMapping { ScrapedField = customTextFieldName }; config.Mappings.Add(map); }
-                        map.DbColumn = cbCustom.SelectedItem?.ToString() ?? "";
-                        cbCustom.Tag = map.DbColumn;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        var cbC = cbCustoms[i];
+                        string currentFieldName = customTextFieldNames[i];
+
+                        cbC.Items.Clear(); cbC.Items.AddRange(cols.ToArray());
+                        string targetCustomStr = cbC.Tag?.ToString() ?? "";
+                        cbC.SelectedIndex = cols.Contains(targetCustomStr) ? cols.IndexOf(targetCustomStr) : 0;
+
+                        cbC.SelectedIndexChanged -= CbCustom_SelectedIndexChanged;
+                        cbC.SelectedIndexChanged += CbCustom_SelectedIndexChanged;
+                        
+                        void CbCustom_SelectedIndexChanged(object sender, EventArgs e) {
+                            var map = config.Mappings.FirstOrDefault(m => m.ScrapedField == currentFieldName);
+                            if (map == null) { map = new FieldMapping { ScrapedField = currentFieldName }; config.Mappings.Add(map); }
+                            map.DbColumn = cbC.SelectedItem?.ToString() ?? "";
+                            cbC.Tag = map.DbColumn;
+                        }
                     }
 
                 } catch (Exception ex) {
