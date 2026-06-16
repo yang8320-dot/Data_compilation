@@ -30,10 +30,29 @@ namespace FormCrawlerApp
             }
         }
 
+        // --- 新增：匯出設定檔 ---
+        public void ExportToFile(string filePath)
+        {
+            using (FileStream fs = new FileStream(filePath, FileMode.Create)) {
+                XmlSerializer xs = new XmlSerializer(typeof(App_DbSettings));
+                xs.Serialize(fs, this);
+            }
+        }
+
+        // --- 新增：匯入設定檔 ---
+        public static App_DbSettings ImportFromFile(string filePath)
+        {
+            using (FileStream fs = new FileStream(filePath, FileMode.Open)) {
+                XmlSerializer xs = new XmlSerializer(typeof(App_DbSettings));
+                return (App_DbSettings)xs.Deserialize(fs);
+            }
+        }
+
         private static App_DbSettings DefaultSettings()
         {
             var s = new App_DbSettings();
-            string[] cats = { "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文", "彰濱廠虛驚事件輕度傷害記錄表" };
+            // 移除 "彰濱廠虛驚事件輕度傷害記錄表"
+            string[] cats = { "彰濱廠異常改善單", "彰濱聯絡書", "台玻內文", "彰濱廠郵件收文" };
             foreach (var c in cats) {
                 s.Categories.Add(new CategoryDbSetting { CategoryName = c });
             }
@@ -52,8 +71,10 @@ namespace FormCrawlerApp
         
         public List<string> ExcludeFormNumbers { get; set; } = new List<string>();
         
-        // 【新增】：用來儲存使用者自行輸入的文字
-        public string CustomTextValue { get; set; } = "";
+        // 擴增為 3 個自訂文字欄位
+        public string CustomTextValue1 { get; set; } = "";
+        public string CustomTextValue2 { get; set; } = "";
+        public string CustomTextValue3 { get; set; } = "";
     }
 
     public class FieldMapping
